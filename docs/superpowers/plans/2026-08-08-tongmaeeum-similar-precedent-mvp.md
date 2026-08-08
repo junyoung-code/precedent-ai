@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 비회원 사용자가 피해자·피신고인 관점을 선택하고 사건 설명과 대화 캡처를 제출하면, 검증된 통신매체이용음란 판례 30~50건 안에서 사실관계가 비슷한 판례만 찾아 근거 문단·공식 원문과 함께 보여주는 비공개 프로토타입을 만든다.
+**Goal:** 비회원 사용자가 피해자·피신고인 관점을 선택하고 사건 설명과 대화 캡처를 제출하면, 먼저 국가법령정보센터에서 검증한 통신매체이용음란 판례 안에서 사실관계가 비슷한 판례만 찾아 근거 문단·공식 원문과 함께 보여주고, 이후 권리가 확인된 2~6번 source로 corpus를 30~50건 이상 확장하는 비공개 프로토타입을 만든다.
 
 **Architecture:** Next.js 단일 애플리케이션 안에서 입력 세션, OCR·개인정보 가림, 사실 구조화, 혼합 검색, 출처 검증, 근거 요약을 명시적인 포트/어댑터로 분리한다. PostgreSQL + pgvector에는 검증된 판례와 암호화된 임시 세션만 두고, 사용자 결과는 저장하지 않는다. 판례 ID·사건번호·공식 URL은 오직 검증 저장소에서 읽으며 AI 출력은 이를 생성하거나 덮어쓸 수 없다.
 
@@ -21,6 +21,8 @@
 - OpenAI API를 쓰는 프로토타입은 API 입력·출력이 기본적으로 학습에 사용되지 않더라도 일부 API 로그가 기본 최대 30일 보관될 수 있음을 화면에 알린다. 실제 사건 입력을 받기 전 적격 엔드포인트의 Zero Data Retention 또는 동등한 최소 보관 계약을 확인한다.
 - 국가법령정보 공동활용 API는 이용 승인 후에만 운영 호출한다. 승인 전에는 녹화된 공식 응답 fixture와 관리자 검증 import만 사용한다.
 - 법원 판결서 인터넷열람은 이용조건·수수료·재이용 범위와 명시적 허가가 확인될 때까지 자동 수집 코드를 만들지 않는다.
+- 사례 제출 전 `이 서비스는 AI를 사용하여 공개 판례를 검색·비교하며 일부 설명을 생성합니다`를 사람이 읽을 수 있게 고지한다. AI가 생성한 모든 요약에는 인접한 `AI 생성 요약` 라벨과 공식 원문 확인 안내를 표시하고 인쇄 결과에도 유지한다.
+- 1차 구현은 국가법령정보센터의 검증 데이터를 로컬 DB에 적재해 완성하고, 2~6번 데이터 경로는 동일한 source adapter와 rights gate를 통해 순차 추가한다.
 - 모든 기능은 실패 테스트를 먼저 작성하고, 실패를 확인한 다음 최소 구현, 전체 관련 테스트, 커밋 순서로 진행한다.
 
 ---
@@ -41,6 +43,10 @@
 ├── docs/
 │   ├── data-sources/
 │   │   ├── law-open-data.md
+│   │   ├── judicial-info-sharing.md
+│   │   ├── supreme-court-public.md
+│   │   ├── ai-hub-legal.md
+│   │   ├── private-b2b.md
 │   │   └── court-judgment-internet-access.md
 │   ├── operations/
 │   │   ├── data-retention.md
@@ -58,7 +64,8 @@
 ├── db/migrations/
 │   ├── 0001_extensions.sql
 │   ├── 0002_precedents.sql
-│   └── 0003_analysis_sessions.sql
+│   ├── 0003_analysis_sessions.sql
+│   └── 0004_source_rights.sql
 ├── scripts/
 │   ├── migrate.ts
 │   ├── import-curated.ts
@@ -83,6 +90,7 @@
 │   │   ├── ocr-review.tsx
 │   │   ├── follow-up-form.tsx
 │   │   ├── confirmed-case-summary.tsx
+│   │   ├── ai-disclosure.tsx
 │   │   ├── search-coverage.tsx
 │   │   ├── precedent-card.tsx
 │   │   └── result-empty-state.tsx
@@ -99,10 +107,15 @@
 │       ├── precedents/source-adapter.ts
 │       ├── precedents/curated-source.ts
 │       ├── precedents/law-open-data-source.ts
+│       ├── precedents/judicial-info-sharing-source.ts
+│       ├── precedents/supreme-court-public-source.ts
+│       ├── precedents/ai-hub-legal-source.ts
+│       ├── precedents/private-b2b-source.ts
 │       ├── precedents/court-judgment-source.ts
 │       ├── precedents/verified-manual-source.ts
 │       ├── precedents/repository.ts
 │       ├── precedents/source-verifier.ts
+│       ├── precedents/source-rights.ts
 │       ├── privacy/encrypted-payload.ts
 │       ├── privacy/encrypted-upload-store.ts
 │       ├── privacy/pii-redactor.ts
@@ -156,7 +169,7 @@ export type CaseFacts = {
 
 export type VerifiedPrecedent = {
   id: string;
-  provider: "curated" | "law_open_data" | "verified_manual" | "court_judgment";
+  provider: "curated" | "law_open_data" | "judicial_info_sharing" | "supreme_court_public" | "ai_hub" | "private_b2b" | "verified_manual" | "court_judgment";
   providerRecordId: string;
   court: string;
   caseNumber: string;
@@ -172,6 +185,15 @@ export type VerifiedPrecedent = {
   issueTags: string[];
   paragraphs: Array<{ id: string; text: string }>;
   embedding: number[];
+  rights: {
+    storageAllowed: true;
+    indexingAllowed: true;
+    summaryAllowed: true;
+    displayAllowed: true;
+    redistributionAllowed: boolean;
+    termsVersion: string;
+    evidenceDocumentId: string;
+  };
 };
 
 export type SimilarityBreakdown = {
@@ -184,6 +206,9 @@ export type SimilarityBreakdown = {
 export type GroundedSentence = {
   text: string;
   paragraphIds: string[];
+  aiGenerated: true;
+  model: string;
+  generatedAt: string;
 };
 
 export type PrecedentResult = {
@@ -308,6 +333,7 @@ export type PrecedentResult = {
 - Create: `db/migrations/0001_extensions.sql`
 - Create: `db/migrations/0002_precedents.sql`
 - Create: `db/migrations/0003_analysis_sessions.sql`
+- Create: `db/migrations/0004_source_rights.sql`
 - Create: `scripts/migrate.ts`
 - Create: `tests/unit/analysis-schema.test.ts`
 
@@ -340,7 +366,7 @@ export type PrecedentResult = {
 
   CREATE TABLE precedents (
     id uuid PRIMARY KEY,
-    provider text NOT NULL CHECK (provider IN ('curated','law_open_data','verified_manual','court_judgment')),
+    provider text NOT NULL CHECK (provider IN ('curated','law_open_data','judicial_info_sharing','supreme_court_public','ai_hub','private_b2b','verified_manual','court_judgment')),
     provider_record_id text NOT NULL,
     court text NOT NULL,
     case_number text NOT NULL,
@@ -370,6 +396,18 @@ export type PrecedentResult = {
     PRIMARY KEY(precedent_id, paragraph_id),
     UNIQUE(precedent_id, ordinal)
   );
+
+  CREATE TABLE source_rights (
+    provider text PRIMARY KEY,
+    storage_allowed boolean NOT NULL,
+    indexing_allowed boolean NOT NULL,
+    summary_allowed boolean NOT NULL,
+    display_allowed boolean NOT NULL,
+    redistribution_allowed boolean NOT NULL,
+    terms_version text NOT NULL,
+    evidence_document_id text NOT NULL,
+    reviewed_at timestamptz NOT NULL
+  );
   ```
 
   `analysis_sessions`에는 `session_id`, AES-GCM 암호문, IV, auth tag, `created_at`, `expires_at`, `delete_requested_at`, `deleted_at`만 둔다. 원문용 평문 컬럼은 만들지 않는다.
@@ -378,7 +416,7 @@ export type PrecedentResult = {
 
   Run: `docker compose up -d db && pnpm db:migrate && pnpm test tests/unit/analysis-schema.test.ts && pnpm typecheck`
 
-  Expected: migration 3개 적용, schema tests PASS, type error 0개.
+  Expected: migration 4개 적용, schema tests PASS, type error 0개.
 
 - [ ] **Step 6: 커밋한다**
 
@@ -394,6 +432,7 @@ export type PrecedentResult = {
 - Create: `src/lib/precedents/curated-source.ts`
 - Create: `src/lib/precedents/repository.ts`
 - Create: `src/lib/precedents/source-verifier.ts`
+- Create: `src/lib/precedents/source-rights.ts`
 - Create: `scripts/import-curated.ts`
 - Create: `scripts/verify-official-links.ts`
 - Create: `data/curated/precedents.json`
@@ -403,12 +442,13 @@ export type PrecedentResult = {
 
 - [ ] **Step 1: 검색 차단 실패 테스트를 작성한다**
 
-  아래 네 경우를 각각 테스트한다.
+  아래 다섯 경우를 각각 테스트한다.
 
   1. 공식 URL이 `law.go.kr`, `www.law.go.kr`, `open.law.go.kr`, `scourt.go.kr` 하위가 아니다.
   2. `court`, `caseNumber`, `decisionDate`, `sourceText` 중 하나가 비어 있다.
   3. 현재 본문 SHA-256과 `sourceHash`가 다르다.
   4. 성공 링크 검사 기록이 없거나 24시간보다 오래됐다.
+  5. source rights에서 원문 저장·색인·요약·화면 표시 중 하나라도 허용되지 않았다.
 
   모든 경우 `repository.listSearchable()` 결과가 빈 배열이어야 한다.
 
@@ -436,7 +476,7 @@ export type PrecedentResult = {
   ] as const;
   ```
 
-  `SourceVerifier.verify(id, now)`는 DB 레코드를 다시 읽어 URL host, 필수 메타데이터, SHA-256, paragraph 존재, 24시간 이내 2xx/3xx 링크 검사를 모두 통과한 때에만 `searchable=true`로 바꾼다. 하나라도 실패하면 같은 트랜잭션에서 `searchable=false`로 강등한다.
+  `SourceVerifier.verify(id, now)`는 DB 레코드를 다시 읽어 URL host, 필수 메타데이터, SHA-256, paragraph 존재, 24시간 이내 2xx/3xx 링크 검사와 source rights의 저장·색인·요약·표시 허용을 모두 통과한 때에만 `searchable=true`로 바꾼다. 하나라도 실패하면 같은 트랜잭션에서 `searchable=false`로 강등한다.
 
 - [ ] **Step 4: production import와 test fixture를 분리한다**
 
@@ -523,13 +563,14 @@ export type PrecedentResult = {
 - Create: `src/components/app-shell.tsx`
 - Create: `src/components/role-selector.tsx`
 - Create: `src/components/case-composer.tsx`
+- Create: `src/components/ai-disclosure.tsx`
 - Modify: `src/app/page.tsx`
 - Modify: `src/app/globals.css`
 - Create: `tests/unit/case-composer.test.tsx`
 
 - [ ] **Step 1: 역할과 고지 문구의 실패 테스트를 작성한다**
 
-  테스트는 피해자/피신고인 두 버튼, 이미지 `accept="image/png,image/jpeg,image/webp"`, submit 비활성 조건, 자동 삭제 고지, 사실관계 유사도 고지를 확인한다. `고소 가능`, `유죄 확률` 텍스트가 DOM에 없음을 함께 확인한다.
+  테스트는 피해자/피신고인 두 버튼, 이미지 `accept="image/png,image/jpeg,image/webp"`, submit 비활성 조건, 자동 삭제 고지, 사실관계 유사도 고지와 `이 서비스는 AI를 사용하여 공개 판례를 검색·비교하며 일부 설명을 생성합니다`가 submit 전에 보이는지 확인한다. `고소 가능`, `유죄 확률` 텍스트가 DOM에 없음을 함께 확인한다.
 
 - [ ] **Step 2: 실패를 확인한다**
 
@@ -542,6 +583,7 @@ export type PrecedentResult = {
   - 바깥 배경 `#f2f2f3`, 24px radius의 흰 앱 프레임, 72px 세로 사이드바.
   - 중앙 최대 너비 960px, 보라색 blur orb, 큰 한국어 제목, 얇은 `#e7e7ec` 테두리 입력 카드.
   - 역할 선택은 `피해를 받은 사람` / `신고를 받았거나 연락을 받은 사람`으로 표시한다.
+  - 역할 선택과 입력창 사이에 사람이 읽을 수 있는 AI 사용 사전 고지를 두고 `aria-describedby`로 제출 버튼과 연결한다.
   - 첨부는 최대 5장, 파일당 8MB, PNG/JPEG/WebP만 클라이언트와 서버에서 모두 검사한다.
   - 모바일에서는 사이드바를 상단 56px 바로 바꾸고 입력 카드를 화면 폭에 맞춘다.
 
@@ -724,6 +766,7 @@ export type PrecedentResult = {
   - 판례 A summary가 판례 B paragraph ID를 참조.
   - 존재하지 않는 paragraph ID 참조.
   - 근거 문단 없이 summary text만 반환.
+  - 애플리케이션이 조립한 최종 생성 문장에 `aiGenerated:true`, 사용 모델, 생성 시각 중 하나가 누락.
 
   거부 결과는 판례 카드 자체 삭제가 아니라 `summary:null`이며, 사건번호와 URL은 저장소의 값 그대로 남아야 한다.
 
@@ -743,7 +786,7 @@ export type PrecedentResult = {
   };
   ```
 
-  사건번호, 법원, 날짜, URL 필드는 AI schema에 존재하지 않는다. 문장마다 paragraph ID 1개 이상, 모든 ID가 현재 precedent에 소속되어야 한다. 하나라도 어기면 전체 요약을 `null`로 만든다.
+  사건번호, 법원, 날짜, URL 필드는 AI schema에 존재하지 않는다. 문장마다 paragraph ID 1개 이상, 모든 ID가 현재 precedent에 소속되어야 한다. 검증 후 애플리케이션이 `aiGenerated:true`, env에서 읽은 model, 서버 생성 시각을 추가한다. 하나라도 어기면 전체 요약을 `null`로 만든다.
 
 - [ ] **Step 4: 닮은 점·다른 점을 태그에서 결정론적으로 만든다**
 
@@ -778,7 +821,7 @@ export type PrecedentResult = {
 
 - [ ] **Step 1: API와 금지 표현 실패 테스트를 작성한다**
 
-  verified fixture 2건과 invalid fixture 1건을 검색하면 2건 이하만 반환되고 invalid case number는 JSON에 없어야 한다. 결과 component DOM에는 `사실관계 유사도`, `공식 원문 보기`, `비교한 판례`가 있고 금지 표현은 없어야 한다.
+  verified fixture 2건과 invalid fixture 1건을 검색하면 2건 이하만 반환되고 invalid case number는 JSON에 없어야 한다. 결과 component DOM에는 `사실관계 유사도`, `공식 원문 보기`, `비교한 판례`가 있고 금지 표현은 없어야 한다. summary가 존재하는 모든 카드에는 `AI 생성 요약`과 `AI가 판결문을 요약한 내용입니다. 정확한 내용은 공식 원문을 확인하십시오`가 정확히 한 번씩 있어야 한다.
 
 - [ ] **Step 2: 실패를 확인한다**
 
@@ -792,24 +835,24 @@ export type PrecedentResult = {
 
 - [ ] **Step 4: 결과 화면을 구현한다**
 
-  상단에는 `이 결과는 법적 판단이나 가능성 예측이 아닙니다` 고정 고지를 둔다. coverage에는 제공기관별 비교 건수와 마지막 검증일을 표시한다. 카드에는 총점과 45/45/10 설명, 닮은 점, 다른 점, 근거 요약, 법원·사건번호·선고일, `target="_blank" rel="noopener noreferrer"` 공식 링크를 둔다.
+  상단에는 `이 결과는 법적 판단이나 가능성 예측이 아닙니다` 고정 고지를 둔다. coverage에는 제공기관별 비교 건수와 마지막 검증일을 표시한다. 카드에는 총점과 45/45/10 설명, 닮은 점, 다른 점, 근거 요약, 법원·사건번호·선고일, `target="_blank" rel="noopener noreferrer"` 공식 링크를 둔다. 생성 요약 영역은 semantic heading 아래 `AI 생성 요약` 라벨과 원문 확인 안내를 인접 표시하고, 결정론적 유사도·태그 설명에는 생성 라벨을 붙이지 않는다.
 
 - [ ] **Step 5: 빈 결과와 인쇄를 구현한다**
 
-  후보 없음, 검증 전부 실패, 55 미만을 같은 안전한 빈 결과 구조로 처리하되 사유 코드만 다르게 둔다. 화면에는 `현재 검증된 데이터에서 확인된 유사 판례가 없습니다`와 실제 coverage를 표시한다. `결과 인쇄/PDF 저장` 버튼은 `window.print()`만 호출하고 서버 PDF를 만들지 않는다. print CSS에서 sidebar와 버튼을 숨긴다.
+  후보 없음, 검증 전부 실패, 55 미만을 같은 안전한 빈 결과 구조로 처리하되 사유 코드만 다르게 둔다. 화면에는 `현재 검증된 데이터에서 확인된 유사 판례가 없습니다`와 실제 coverage를 표시한다. `결과 인쇄/PDF 저장` 버튼은 `window.print()`만 호출하고 서버 PDF를 만들지 않는다. print CSS에서 sidebar와 버튼을 숨기되 AI 생성 라벨, 원문 확인 안내와 공식 출처는 숨기지 않는다.
 
 - [ ] **Step 6: 검증하고 커밋한다**
 
   Run: `pnpm test tests/integration/search-route.test.ts tests/unit/precedent-card.test.tsx && pnpm typecheck && pnpm build`
 
-  Expected: invalid 판례 노출 0, 빈 결과 강제, build 성공.
+  Expected: invalid 판례 노출 0, 생성 요약 라벨 누락 0, 빈 결과 강제, build 성공.
 
   ```bash
   git add src/app/api/analysis src/app/analysis src/components src/app/globals.css tests/integration/search-route.test.ts tests/unit/precedent-card.test.tsx
   git commit -m "feat: deliver verified precedent results and empty states"
   ```
 
-### Task 11: 국가법령정보 공동활용 API 어댑터를 승인 전 안전하게 준비한다
+### Task 11: 1차 MVP용 국가법령정보 공동활용 API와 로컬 색인을 만든다
 
 **Files:**
 - Create: `src/lib/precedents/law-open-data-source.ts`
@@ -852,7 +895,7 @@ export type PrecedentResult = {
   git commit -m "feat: add approval-gated law open data adapter"
   ```
 
-### Task 12: 실제 검증 판례 30~50건을 구축하고 검색 품질 세트를 만든다
+### Task 12: 국가법령정보센터 검증 판례로 초기 로컬 corpus를 만든다
 
 **Files:**
 - Modify: `data/curated/precedents.json`
@@ -860,15 +903,15 @@ export type PrecedentResult = {
 - Create: `tests/quality/retrieval-quality.test.ts`
 - Create: `docs/data-sources/curation-log.md`
 
-- [ ] **Step 1: import acceptance test를 30건 미만에서 실패하게 만든다**
+- [ ] **Step 1: import acceptance test를 5건 미만에서 실패하게 만든다**
 
-  quality test는 production curated JSON에 30~50건이 있고, provider ID·법원·사건번호·선고일·공식 URL·본문·해시·문단·facts가 모두 존재하며 중복 사건이 0건인지 검사한다. import 후 DB의 각 검색 가능 레코드에는 `text-embedding-3-small`의 1,536차원 embedding이 있어야 한다.
+  초기 private prototype quality test는 국가법령정보센터에서 검증한 production 레코드가 최소 5건 있고, provider ID·법원·사건번호·선고일·공식 URL·본문·해시·문단·facts가 모두 존재하며 중복 사건이 0건인지 검사한다. import 후 DB의 각 검색 가능 레코드에는 `text-embedding-3-small`의 1,536차원 embedding이 있어야 한다. 30~50건과 top-3 90%는 2~6번 source 확장 후 공개 준비 gate로 유지한다.
 
 - [ ] **Step 2: 실패를 확인한다**
 
   Run: `pnpm test tests/quality/retrieval-quality.test.ts`
 
-  Expected: curated dataset이 0건이므로 FAIL.
+  Expected: 초기 dataset이 5건 미만이면 FAIL.
 
 - [ ] **Step 3: 공식 판례를 5건씩 수집·이중 확인한다**
 
@@ -889,73 +932,73 @@ export type PrecedentResult = {
 
   사례에는 실명·연락처를 넣지 않고 `queryFacts`, `expectedPrecedentIds`, `derivationSourceUrl`만 둔다. 유죄/무죄 결론을 질문이나 기대값으로 사용하지 않는다. 한 판례에서 표현·매체·관계 중 일부를 바꾼 near/far pair를 포함한다.
 
-- [ ] **Step 5: top-3 품질 게이트를 구현하고 통과시킨다**
+- [ ] **Step 5: top-3 품질 측정을 구현하고 초기 기준선을 기록한다**
 
   ```ts
   const hitRate = cases.filter((c) => top3(c).some((r) => c.expectedPrecedentIds.includes(r.id))).length / cases.length;
-  expect(hitRate).toBeGreaterThanOrEqual(0.9);
+  expect(Number.isFinite(hitRate)).toBe(true);
   ```
 
-  실패 시 임계값을 낮춰 억지로 통과시키지 않는다. facts tag 오류, paragraph 분할, neutral summary, embedding 입력을 먼저 교정하고, 가중치를 바꾸면 변경 이유와 전후 hit rate를 curation log에 기록한다.
+  초기 데이터가 적은 동안 hit rate는 release gate로 쓰지 않고 측정값과 실패 사례를 curation log에 기록한다. facts tag 오류, paragraph 분할, neutral summary, embedding 입력을 먼저 교정하고, 가중치를 바꾸면 변경 이유와 전후 hit rate를 함께 기록한다. 전체 corpus 30~50건과 합성 사례 20건 이상이 되면 `expect(hitRate).toBeGreaterThanOrEqual(0.9)`를 활성화한다.
 
 - [ ] **Step 6: 전체 데이터 품질을 검증하고 커밋한다**
 
   Run: `pnpm test tests/quality/retrieval-quality.test.ts tests/integration/curated-import.test.ts && pnpm db:verify-links`
 
-  Expected: 실제 판례 30~50건, 공식 링크 검증 100%, top-3 hit rate 90% 이상.
+  Expected: 실제 판례 최소 5건, 공식 링크 검증 100%, 초기 hit rate 기준선 기록 완료.
 
   ```bash
   git add data/curated/precedents.json tests/quality docs/data-sources/curation-log.md
   git commit -m "data: curate verified tongmaeeum precedent corpus"
   ```
 
-### Task 13: 법원 판결서 인터넷열람 확장 경계와 수동 검증 경로를 만든다
+### Task 13: 2~6번 판례 확보 경로를 권리 검증형 adapter로 순차 확장한다
 
 **Files:**
+- Create: `src/lib/precedents/judicial-info-sharing-source.ts`
 - Create: `src/lib/precedents/court-judgment-source.ts`
+- Create: `src/lib/precedents/supreme-court-public-source.ts`
+- Create: `src/lib/precedents/ai-hub-legal-source.ts`
+- Create: `src/lib/precedents/private-b2b-source.ts`
 - Create: `src/lib/precedents/verified-manual-source.ts`
-- Create: `tests/unit/court-judgment-source.test.ts`
+- Create: `src/lib/precedents/source-rights.ts`
+- Create: `tests/integration/multi-source-import.test.ts`
+- Create: `tests/unit/source-rights.test.ts`
+- Create: `docs/data-sources/judicial-info-sharing.md`
 - Create: `docs/data-sources/court-judgment-internet-access.md`
+- Create: `docs/data-sources/supreme-court-public.md`
+- Create: `docs/data-sources/ai-hub-legal.md`
+- Create: `docs/data-sources/private-b2b.md`
 
-- [ ] **Step 1: 무허가 자동 수집 차단 실패 테스트를 작성한다**
+- [ ] **Step 1: 권리 미확인 source와 중복 판례의 실패 테스트를 작성한다**
 
-  `CourtJudgmentSource.listCandidates()`와 `fetchRecord()`가 설정과 무관하게 `COURT_SOURCE_NOT_AUTHORIZED`를 던지고 네트워크 fetch를 한 번도 호출하지 않는지 검사한다.
+  저장·색인·요약·화면 표시 권한 중 하나라도 `false`이거나 `termsVersion`, `evidenceDocumentId`가 비어 있으면 import가 `SOURCE_RIGHTS_NOT_VERIFIED`로 실패해야 한다. 여러 source가 같은 `court + caseNumber + decisionDate`를 반환하면 검색 레코드는 하나만 생기고 source provenance는 모두 연결되어야 한다.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [ ] **Step 2: 사법정보공유포털 연계 API adapter를 계약 전 비활성화한다**
 
-  Run: `pnpm test tests/unit/court-judgment-source.test.ts`
+  `JUDICIAL_INFO_AGREEMENT_ID`와 승인된 endpoint 설정이 없으면 network call 전에 `JUDICIAL_INFO_AGREEMENT_REQUIRED`를 던진다. 계약 문서에는 원문 저장, 임베딩·색인, AI 요약, 사용자 표시, 보관기간, 계약 종료 시 삭제 조건을 기록한다. 승인 후 fixture parser와 sync를 추가하고 새 레코드는 source verifier 통과 전까지 `searchable=false`로 둔다.
 
-  Expected: source module이 없어 FAIL.
+- [ ] **Step 3: 판결서 인터넷열람과 대법원 공식 공개 자료의 경계를 구현한다**
 
-- [ ] **Step 3: 명시적으로 비활성화된 adapter seam을 구현한다**
+  `CourtJudgmentSource`는 명시적 허가 전 항상 `COURT_SOURCE_NOT_AUTHORIZED`를 던지고 자동 로그인·결제·HTML crawling을 포함하지 않는다. `SupremeCourtPublicSource`는 관리자가 공식 공개 URL과 원문을 넣는 verified manual import만 지원하며, 판결문 원문과 별도 해설·편집물을 구분해 rights evidence가 있는 원문만 받는다.
 
-  ```ts
-  export class CourtJudgmentSource implements PrecedentSourceAdapter {
-    readonly provider = "court_judgment" as const;
-    async listCandidates(): Promise<never> { throw new Error("COURT_SOURCE_NOT_AUTHORIZED"); }
-    async fetchRecord(): Promise<never> { throw new Error("COURT_SOURCE_NOT_AUTHORIZED"); }
-  }
-  ```
+- [ ] **Step 4: AI Hub 승인 다운로드용 로컬 import를 구현한다**
 
-  향후 공식 API·계약·명시적 허가 문서 ID가 코드 리뷰에 첨부된 별도 변경에서만 이 클래스를 교체한다.
+  `AiHubLegalSource`는 관리자가 승인받아 내려받은 디렉터리만 읽고 dataset ID, version, 승인 계정 조직, terms version, 원문 출처를 manifest에서 검증한다. 사건번호와 공식 원문을 독립 검증할 수 있는 레코드만 searchable 후보로 보내고 나머지는 `evaluation_only=true`로 분리한다. 원본 dataset 다운로드 API나 파일을 사용자에게 제공하지 않는다.
 
-- [ ] **Step 4: 합법 취득 문서용 수동 import를 구현한다**
+- [ ] **Step 5: 민간 B2B adapter와 canonical 병합을 구현한다**
 
-  `VerifiedManualSource`는 관리자 로컬 JSON과 원문 파일만 읽고, 취득 근거 문서 ID, 검토자, 검토일, 법원·사건번호·선고일·원문 URL/열람 식별자, 본문 해시가 없으면 거부한다. 자동 로그인, 결제 자동화, HTML crawling 코드는 포함하지 않는다.
+  `PrivateB2BSource`는 `PRIVATE_DATA_AGREEMENT_ID`, 계약 만료일, 저장·색인·요약·표시 권한이 모두 확인된 경우에만 활성화한다. canonical 우선순위는 `judicial_info_sharing → law_open_data → supreme_court_public → private_b2b → ai_hub → verified_manual`로 하고, 대표 원문이 바뀌어도 모든 source record ID와 hash 이력을 보존한다. 계약 만료·삭제 통지 시 해당 source 원문과 파생 embedding을 비활성화하고 다른 허용 source가 있으면 canonical record를 재선정한다.
 
-- [ ] **Step 5: 사전 조사 체크리스트를 문서화한다**
+- [ ] **Step 6: source 추가가 검색 점수를 바꾸지 않는지 검증하고 커밋한다**
 
-  문서에는 이용조건, 건별 수수료, 비실명 처리, 열람 제한, 원문 재저장, 요약 제공, 딥링크, 대량 이용, 삭제·정정 대응을 조사하고 법원/기관 회신을 보관하는 절차를 적는다. 허가 전 상태는 `차단됨`으로 명시한다.
+  Run: `pnpm test tests/unit/source-rights.test.ts tests/integration/multi-source-import.test.ts tests/integration/retrieval.test.ts && pnpm typecheck`
 
-- [ ] **Step 6: 검증하고 커밋한다**
-
-  Run: `pnpm test tests/unit/court-judgment-source.test.ts && pnpm typecheck`
-
-  Expected: 무허가 fetch 호출 0회, 불완전 manual record 거부.
+  Expected: 무허가 network call 0회, 권리 미확인 레코드 노출 0건, 동일 판례 중복 카드 0건, source 자체에 따른 점수 가산 0점.
 
   ```bash
-  git add src/lib/precedents/court-judgment-source.ts src/lib/precedents/verified-manual-source.ts tests/unit/court-judgment-source.test.ts docs/data-sources/court-judgment-internet-access.md
-  git commit -m "feat: reserve authorized court judgment source boundary"
+  git add src/lib/precedents tests/unit/source-rights.test.ts tests/integration/multi-source-import.test.ts docs/data-sources
+  git commit -m "feat: add rights-gated multi-source precedent ingestion"
   ```
 
 ### Task 14: 전체 흐름·삭제·환각 방지 E2E와 운영 점검을 완성한다
@@ -974,6 +1017,8 @@ export type PrecedentResult = {
   2. 피신고인 역할 → 55 미만 → 판례 카드 0개와 coverage 표시.
   3. 저장소 밖 가짜 사건번호를 AI fixture에 섞어도 DOM에 0회.
   4. 결과 응답 뒤 session read가 404이고 임시 파일이 없다.
+  5. 사례 제출 전 AI 사용 고지가 보이고, 생성 요약마다 `AI 생성 요약`과 원문 확인 안내가 보이며 인쇄 화면에도 유지된다.
+  6. 동일 판례가 두 source에서 들어와도 결과 카드는 하나이고 coverage에는 source별 실제 건수가 구분 표시된다.
 
 - [ ] **Step 2: 실패를 확인한다**
 
@@ -1014,7 +1059,7 @@ export type PrecedentResult = {
   pnpm privacy:purge
   ```
 
-  Expected: 전부 exit 0, 공식 링크 검증 100%, top-3 품질 90% 이상, 생성 사건번호 0건, 1시간 TTL 테스트 100% PASS.
+  Expected: 전부 exit 0, 공식 링크 검증 100%, 생성 사건번호 0건, 1시간 TTL 테스트 100% PASS. 초기 corpus에서는 top-3 기준선을 보고서로 남기고, 2~6번 source 확장 후 공개 준비 단계에서만 90% 이상을 필수로 한다.
 
 - [ ] **Step 7: 커밋한다**
 
@@ -1027,18 +1072,27 @@ export type PrecedentResult = {
 
 ## 3. Release Gates
 
-비공개 프로토타입 테스트를 시작하려면 다음을 모두 만족해야 한다.
+국가법령정보 공동활용 API만 사용하는 첫 비공개 프로토타입 테스트를 시작하려면 다음을 모두 만족해야 한다.
 
-- [ ] production curated dataset이 30~50건이며 모든 판례가 공식 URL·원문 해시·검증 시각을 가진다.
+- [ ] 국가법령정보 공동활용 API에서 확보한 통매음 판례가 최소 5건이며 모든 판례가 공식 URL·원문 해시·검증 시각을 가진다. 5건 미만이면 실제 확보 건수를 그대로 표시하고 공개하지 않는다.
 - [ ] 표시되는 사건번호·법원·날짜·URL의 source가 repository뿐임을 unit test로 증명한다.
 - [ ] 모든 요약 문장이 동일 판례 paragraph ID 1개 이상을 가지며 실패 시 summary가 숨겨진다.
-- [ ] 고정 합성 사례 top-3 hit rate가 90% 이상이다.
 - [ ] 55 미만, source invalid, API 장애에서 판례를 생성하지 않고 coverage 포함 empty state를 보인다.
 - [ ] 분석 완료 즉시 삭제와 1시간 purge가 integration/E2E에서 모두 통과한다.
 - [ ] 금지 표현 전체 검색 결과가 0건이다: `rg -n "성립 확률|고소 확률|유죄 확률|무죄 가능성|처벌 예상" src tests/e2e`.
 - [ ] API/운영 로그에 사용자 원문·OCR·prompt가 남지 않는다.
 - [ ] 국가법령정보 공동활용 승인과 출처 표시가 확인되거나, 승인 전에는 curated data만 사용한다.
 - [ ] 법원 판결서 인터넷열람 adapter의 live network 호출은 0회다.
+- [ ] 사례 제출 전 `이 서비스는 AI를 사용하여 공개 판례를 검색·비교하며 일부 설명을 생성합니다`가 보이고, 모든 생성 요약에 `AI 생성 요약`과 원문 확인 안내가 보인다.
+
+2~6번 source를 추가해 실제 사건 사용자를 대상으로 공개하기 전에는 다음 확장 게이트도 모두 통과해야 한다.
+
+- [ ] 검색 가능한 통매음 판례가 30~50건 이상이며, source별 확보 건수와 누락 범위를 사용자에게 표시한다.
+- [ ] 고정 합성 사례 20건에서 관련 판례가 top-3에 포함되는 비율이 90% 이상이다.
+- [ ] 검색 가능한 모든 판례에 저장·색인·요약·표시 권한과 약관 버전·검토 증빙이 있다.
+- [ ] 같은 판례가 여러 source에 존재해도 결과 카드가 하나만 표시되고 모든 provenance가 보존된다.
+- [ ] source 계약 만료·삭제 요청 시 해당 원문과 파생 embedding이 비활성화되고 검색 결과에서 빠진다.
+- [ ] 현재 AI기본법·시행령에 맞는 사전 고지와 생성 결과 표시를 출시 직전 법률 전문가가 재검토한다.
 
 ## 4. Deferred Until After User Feedback
 
@@ -1064,3 +1118,9 @@ export type PrecedentResult = {
 - [공공데이터포털 판례 본문 API](https://www.data.go.kr/data/15057123/openapi.do)
 - [법원 판결서 인터넷열람 안내](https://www.scourt.go.kr/portal/information/finalruling/guide/guide_02.jsp)
 - [법원 판결서 열람 제한 안내](https://www.scourt.go.kr/portal/information/finalruling/guide/guide_01.jsp)
+- [사법정보공유포털 Open API 안내](https://openapi.scourt.go.kr/kgso202m01.do)
+- [사법정보공유포털 이용약관](https://openapi.scourt.go.kr/kgso000m02.do)
+- [AI Hub 판결서 익명처리 데이터](https://www.aihub.or.kr/aihubdata/data/view.do?aihubDataSe=&currMenu=115&dataSetSn=71968&topMenu=100)
+- [AI Hub 이용약관](https://aihub.or.kr/useStplat.do?currMenu=110&topMenu=110)
+- [인공지능 발전과 신뢰 기반 조성 등에 관한 기본법 제31조](https://www.law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lsJoLnkSeq=1031810729)
+- [인공지능 발전과 신뢰 기반 조성 등에 관한 기본법 시행령](https://www.law.go.kr/LSW/lsInfoP.do?lsId=015032)
