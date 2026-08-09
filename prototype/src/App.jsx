@@ -5,22 +5,18 @@ import { extractCaseFacts, rankPrecedents } from "./lib/search.js";
 const EXAMPLES = [
   {
     label: "게임 채팅",
-    icon: "⌁",
     text: "온라인 게임에서 처음 만난 상대와 다투다가 카카오톡으로 성적인 욕설을 한 번 받았습니다.",
   },
   {
     label: "카카오톡 이미지",
-    icon: "▧",
     text: "알고 지내던 사람이 카카오톡으로 원하지 않는 나체 사진을 한 차례 보냈습니다.",
   },
   {
     label: "SNS 멘션",
-    icon: "@",
     text: "SNS에서 다투던 상대를 차단했는데 제 계정을 멘션한 성적인 게시글을 올렸습니다.",
   },
   {
     label: "송금메모",
-    icon: "₩",
     text: "계좌로 1원을 여러 번 보내면서 송금메모에 성적인 욕설을 반복해서 적었습니다.",
   },
 ];
@@ -193,6 +189,20 @@ function CaseComposer({ role, onRoleChange, description, onDescriptionChange, on
   return (
     <form className="composer" onSubmit={submit}>
       <RoleSelector value={role} onChange={onRoleChange} />
+      <div className="quick-examples" aria-label="빠른 입력 예시">
+        <span>빠른 예시</span>
+        <div>
+          {EXAMPLES.map((example) => (
+            <button
+              type="button"
+              key={example.label}
+              onClick={() => onDescriptionChange(example.text)}
+            >
+              {example.label}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="composer-divider" />
       <label className="textarea-label" htmlFor="case-description">
         사례를 시간 순서대로 적어주세요
@@ -245,7 +255,9 @@ function HomeView({ role, setRole, description, setDescription, onSubmit, analyz
   return (
     <section className="home-view">
       <div className="hero">
-        <div className="orb" aria-hidden="true"><span /></div>
+        <div className="hero-medallion" aria-hidden="true">
+          <img src="/assets/gavel.png" alt="" />
+        </div>
         <p className="eyebrow">검증된 공개 판례 기반</p>
         <h1>내 사례와 닮은 판례를<br /><span>사실관계로 비교해보세요</span></h1>
         <p className="hero-copy">법적 결론을 예측하지 않습니다. 공식 판례와 닮은 점·다른 점을 확인할 수 있습니다.</p>
@@ -259,22 +271,6 @@ function HomeView({ role, setRole, description, setDescription, onSubmit, analyz
         onSubmit={onSubmit}
         analyzing={analyzing}
       />
-      <section className="examples" aria-labelledby="examples-title">
-        <div className="section-heading">
-          <span id="examples-title">입력 예시로 시작하기</span>
-          <small>예시를 선택한 뒤 상황에 맞게 수정하세요</small>
-        </div>
-        <div className="example-grid">
-          {EXAMPLES.map((example) => (
-            <button className="example-card" type="button" key={example.label} onClick={() => setDescription(example.text)}>
-              <span className="example-icon" aria-hidden="true">{example.icon}</span>
-              <strong>{example.label}</strong>
-              <p>{example.text}</p>
-              <span className="example-arrow" aria-hidden="true">↗</span>
-            </button>
-          ))}
-        </div>
-      </section>
     </section>
   );
 }
