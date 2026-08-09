@@ -3,67 +3,60 @@
 ## Evidence
 
 - Source visual truth:
-  - `/var/folders/7h/pzbct4xn2zz74jxfyclfsn2w0000gn/T/codex-clipboard-f074a04c-469c-4049-b420-dcd733c32862.png` (940 × 650 px, spacious layout reference)
-  - `/var/folders/7h/pzbct4xn2zz74jxfyclfsn2w0000gn/T/codex-clipboard-8b2dd9d9-83cb-4814-b41b-94facd577d5a.png` (3396 × 1908 px, pre-change implementation capture)
+  - `/var/folders/7h/pzbct4xn2zz74jxfyclfsn2w0000gn/T/codex-clipboard-6ea3e83f-e5d1-4aa7-92b8-698887df59fb.png` (932 × 230 px, roomy AI-composer reference).
+  - `/var/folders/7h/pzbct4xn2zz74jxfyclfsn2w0000gn/T/codex-clipboard-7948e6ed-8e0e-4371-acf4-70839bc54518.png` (1770 × 178 px, cramped textarea and awkward internal-scroll reference).
 - Implementation screenshots:
-  - `/Users/junyoung/Desktop/판례AI/prototype/design-qa-desktop.png` (1280 × 720 px browser-rendered desktop capture)
-  - `/Users/junyoung/Desktop/판례AI/prototype/design-qa-mobile.png` (390 × 922 px full-page mobile capture from a 390 × 844 CSS viewport)
-  - `/Users/junyoung/Desktop/판례AI/prototype/design-qa-results.png` (1280 × 720 px results state)
-- CSS viewport measurements:
-  - Tall desktop verification: 1440 × 1080 CSS px, browser-default density.
-  - Short desktop verification: 1280 × 720 CSS px, browser-default density.
-- Density normalization: the browser capture layer stores desktop evidence at 1280 × 720 px. The tall CSS viewport was therefore verified additionally with DOM geometry and computed typography values; the differently sized source screenshots were compared for hierarchy, density, and requested deltas rather than pixel-level cloning.
-- State: empty landing form on desktop/mobile and populated victim/game-chat results state.
+  - `/Users/junyoung/Desktop/판례AI/prototype/design-qa-desktop.png` (1280 × 720 px, empty desktop landing at a 1280 × 720 CSS viewport).
+  - `/Users/junyoung/Desktop/판례AI/prototype/design-qa-results.png` (1280 × 720 px, populated results after smooth in-document scrolling).
+  - `/Users/junyoung/Desktop/판례AI/prototype/design-qa-mobile.png` (1280 × 720 px capture surface containing the 390 px responsive layout at the left; the in-app capture layer padded the remaining width).
+- State: empty landing form on desktop and mobile, plus a populated victim/game-chat results state.
+- Normalization: source and implementation captures differ in dimensions, so the comparison evaluates hierarchy, component anatomy, density, spacing, and requested interaction deltas rather than pixel-for-pixel cloning.
 
 ## Full-view comparison evidence
 
-The spacious source reference, the user's pre-change capture, and the final browser-rendered landing were opened together in one comparison input. On a tall desktop the landing is now vertically centered with visibly larger gaps between the emblem, eyebrow, title, supporting copy, disclosure, and form. The display title grows to 44 px and the supporting copy to 15 px, while role labels, helper copy, textarea text, attachment control, and submit button also receive a proportional type increase.
+Both user references and all three final implementation captures were opened together at original resolution. The final desktop keeps the approved brown legal-AI shell while adopting the requested common AI-platform anatomy: one wide 1040 px composer, a 150 px writing area, controls in the bottom toolbar, and substantial whitespace separating the gavel, title, supporting copy, and composer. The former standalone role cards and large AI-disclosure card are absent.
 
-The increased spacing does not reintroduce scrolling. At 1440 × 1080 CSS px the document scroll height equals the viewport height, the shell ends at 1056 px, and the composer ends at 968.4 px. At 1280 × 720 CSS px the compact rules remain active: the document scroll height equals 720 px and the composer ends at 696.44 px inside the shell.
+The results capture verifies that submission does not replace the landing with a disconnected screen. The results section remains below the composer in the same document and arrives at the top of the viewport after smooth scrolling. The mobile evidence shows the toolbar wrapping into two rows without narrowing the writing area or introducing a nested textarea scrollbar.
 
 ## Focused-region comparison evidence
 
-The title/hero region and complete composer are readable at original capture resolution, so no separate crop was necessary. Focused checks used computed styles and element geometry: tall desktop title `44px`, supporting copy `15px`, hero bounds `193.6–444.9px`, and composer bounds `551.4–968.4px`. This confirms the requested increase in both typography and section spacing without relying only on visual impression.
+The 932 × 230 composer reference is itself a focused crop, so it was compared directly with the complete composer visible in the desktop implementation capture. Both use a large blank writing surface, a distinct footer row, left-aligned auxiliary controls, and a compact circular submit control on the right. Product-specific differences are deliberate: `피해자 | 피신고인` replaces the reference's writing-style control, and the legally relevant AI-use line sits immediately below the composer instead of consuming a large card above it.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: the existing Pretendard/Korean system stack is preserved. Tall desktop display text increases to 44 px with 1.1 line height; supporting and form text increase proportionally. Short desktop and mobile retain their established responsive sizes to prevent clipping.
-- Spacing and layout rhythm: the tall-screen layout uses a centered vertical stack, a larger medallion margin, a 28 px disclosure gap, roomier role controls, 20 px form dividers, and a 112 px textarea. Compact desktop remains fixed and non-scrolling; mobile remains naturally scrollable.
-- Colors and visual tokens: the approved walnut, caramel, ivory, neutral gray, and official-source green tokens remain unchanged.
-- Image quality and asset fidelity: the approved real gavel-plus-sound-block asset is unchanged, remains centered, and gains a modest 72 px medallion on tall screens without stretching or cropping.
-- Copy and content: no copy was added or removed. The legal-neutral statement, AI-use disclosure, verified-source count, `사실관계 유사도`, AI summary labeling, and official-source link remain intact.
-- Accessibility and interaction: role buttons, labeled textarea, attachment input, and submit control remain semantic and keyboard reachable. Responsive type increases do not hide or overlap controls.
-
-## Findings
-
-- No actionable P0, P1, or P2 findings remain.
-
-## Open Questions
-
-- None.
+- Fonts and typography: the existing Korean system/Pretendard stack is preserved. The desktop title retains clear two-line hierarchy; composer input is 15 px with 1.65 line height. The mobile title is 28 px so the final Korean character no longer becomes an orphaned third line.
+- Spacing and layout rhythm: desktop uses a 1040 px composer, 150 px writing area, 52 px hero-to-composer gap, and 238 px minimum composer height. Mobile keeps the same writing height and converts the footer to two rows.
+- Colors and visual tokens: approved walnut, caramel, ivory, gray, and official-source green tokens remain intact. Selected role state uses the restrained walnut accent.
+- Image quality and asset fidelity: the approved centered gavel-and-sound-block medallion is unchanged and is rendered without stretching or cropping.
+- Copy and content: the pre-use notice is reduced to `AI가 공개 판례를 검색·비교합니다.`; the privacy line remains beside it. Results retain `AI 생성 요약`, an official-source reminder, verified case metadata, and the neutral `사실관계 유사도` framing.
+- Accessibility and interaction: the textarea has an accessible label; the role group exposes `aria-pressed`; attachment and submit controls remain keyboard reachable. `prefers-reduced-motion` replaces smooth movement with immediate movement.
 
 ## Primary interactions tested
 
 1. Selected `피해자` and entered a realistic game-chat case.
-2. Submitted the enabled comparison button.
-3. Confirmed one verified result card, one official `law.go.kr` link, and an `AI 생성 요약` badge.
-4. Confirmed the results title `사실관계가 닮은 판례`.
-5. No runtime failure occurred during the complete submit/results flow.
+2. Confirmed the submit control became enabled and submitted the form.
+3. Measured document movement from `scrollY = 0` to `677.5`; the results heading landed at approximately 20 px from the viewport top.
+4. Confirmed one verified result card, one official `law.go.kr` link, and one `AI 생성 요약` badge.
+5. Confirmed the former AI-disclosure card count is zero and both role buttons remain present.
+6. No runtime failure or failed interaction was observed during landing, submission, results, and return-flow checks.
 
-## Comparison history
+## Findings and comparison history
 
-- Earlier state `[P2]`: on a tall display the compact spacing and 38.4 px title made the hero and form feel visually compressed relative to the user's spacious reference.
-- Fix: added a tall-desktop-only media query at `min-width: 901px` and `min-height: 1020px`, increasing display/body/form typography, vertical gaps, control heights, and textarea height while vertically centering the complete landing stack.
-- Post-fix evidence: the tall desktop title is 44 px, the hero and composer have a 106.5 px separation that includes the disclosure region, and the composer retains 87.6 px of clearance from the shell bottom. The short desktop stays at 38.4 px with no document scroll.
-- Responsive evidence: the tall-screen rule is excluded below 901 px width, so the existing mobile layout and bottom navigation remain unchanged.
+- First mobile check `[P2]`: the 31 px title left the final `요` on a third line.
+- Fix: reduced the narrow-screen title to 28 px with 1.12 line height, producing two balanced lines.
+- First compact-notice check `[P2]`: 9 px notice text was too faint at the target capture size.
+- Fix: increased compact notice text to 10 px while preserving its low-priority position below the composer.
+- Post-fix comparison: desktop shows the full composer without document scrolling; mobile shows a two-row footer and two-line title; results appear in continuous document flow. No actionable P0, P1, or P2 findings remain.
 
 ## Implementation checklist
 
-- [x] Increase tall-desktop headline and supporting typography.
-- [x] Increase spacing between hero, disclosure, and form.
-- [x] Increase form typography, controls, and textarea only when vertical room exists.
-- [x] Preserve fixed, no-scroll compact desktop behavior.
-- [x] Preserve mobile scrolling and responsive stacking.
-- [x] Verify the complete precedent-search results flow and official-source labeling.
+- [x] Replace the large AI-use card with a compact pre-use line.
+- [x] Embed `피해자 | 피신고인` in the composer toolbar.
+- [x] Expand the writing surface to 1040 × 150 px on desktop.
+- [x] Preserve generous gaps among medallion, title, supporting copy, and composer.
+- [x] Keep results in the same document flow and scroll to them smoothly.
+- [x] Respect reduced-motion preferences.
+- [x] Stack mobile controls without a nested textarea scrollbar.
+- [x] Preserve verified-source and AI-generated-summary labeling in results.
 
 final result: passed

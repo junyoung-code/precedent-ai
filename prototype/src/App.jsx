@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { VERIFIED_PRECEDENTS } from "./lib/precedents.js";
 import { extractCaseFacts, rankPrecedents } from "./lib/search.js";
 
@@ -92,43 +92,26 @@ function TopBar({ view, onHome }) {
   );
 }
 
-function AiDisclosure({ compact = false }) {
-  return (
-    <div className={`ai-disclosure ${compact ? "is-compact" : ""}`} role="note">
-      <span className="disclosure-icon" aria-hidden="true">✦</span>
-      <div>
-        <strong>AI 사용 안내</strong>
-        <p>이 서비스는 AI를 사용하여 공개 판례를 검색·비교하며 일부 설명을 생성합니다.</p>
-      </div>
-    </div>
-  );
-}
-
 function RoleSelector({ value, onChange }) {
+  const roles = [
+    { value: "victim", label: "피해자" },
+    { value: "reported", label: "피신고인" },
+  ];
+
   return (
-    <fieldset className="role-fieldset">
-      <legend>어떤 입장에서 사례를 살펴볼까요?</legend>
-      <div className="role-options">
+    <div className="role-segment" role="group" aria-label="사례를 살펴볼 입장">
+      {roles.map((item) => (
         <button
           type="button"
-          className={`role-option ${value === "victim" ? "is-selected" : ""}`}
-          onClick={() => onChange("victim")}
-          aria-pressed={value === "victim"}
+          key={item.value}
+          className={`role-segment-button ${value === item.value ? "is-selected" : ""}`}
+          aria-pressed={value === item.value}
+          onClick={() => onChange(item.value)}
         >
-          <span className="role-radio" aria-hidden="true" />
-          <span><strong>피해자</strong><small>메시지를 받은 입장</small></span>
+          {item.label}
         </button>
-        <button
-          type="button"
-          className={`role-option ${value === "reported" ? "is-selected" : ""}`}
-          onClick={() => onChange("reported")}
-          aria-pressed={value === "reported"}
-        >
-          <span className="role-radio" aria-hidden="true" />
-          <span><strong>피신고인</strong><small>메시지를 보낸 입장</small></span>
-        </button>
-      </div>
-    </fieldset>
+      ))}
+    </div>
   );
 }
 
@@ -168,59 +151,62 @@ function CaseComposer({ role, onRoleChange, description, onDescriptionChange, on
   }
 
   return (
-    <form className="composer" onSubmit={submit}>
-      <RoleSelector value={role} onChange={onRoleChange} />
-      <div className="composer-divider" />
-      <label className="textarea-label" htmlFor="case-description">
-        사례를 시간 순서대로 적어주세요
-        <span>표현 원문 대신 상황·매체·관계·횟수 중심으로 작성해도 됩니다.</span>
-      </label>
-      <textarea
-        id="case-description"
-        value={description}
-        onChange={(event) => onDescriptionChange(event.target.value.slice(0, 2000))}
-        placeholder="예: 온라인 게임에서 처음 만난 사람과 다투다가, 게임이 끝난 뒤 카카오톡으로 성적인 욕설을 한 차례 받았습니다."
-        rows={5}
-      />
-      <div className="composer-footer">
-        <div className="attachment-area">
-          <input
-            ref={fileInputRef}
-            className="visually-hidden"
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            onChange={handleFile}
-            id="case-image"
-          />
-          <label className="attach-button" htmlFor="case-image">
-            <span aria-hidden="true">⌕</span> 대화 캡처 첨부
-          </label>
-          {file && (
-            <button className="file-chip" type="button" onClick={removeFile} aria-label={`${file.name} 삭제`}>
-              {file.name} <span aria-hidden="true">×</span>
+    <div className="composer-stack">
+      <form className="composer" onSubmit={submit}>
+        <textarea
+          id="case-description"
+          aria-label="사례 설명"
+          value={description}
+          onChange={(event) => onDescriptionChange(event.target.value.slice(0, 2000))}
+          placeholder="상황·매체·관계·횟수를 시간 순서대로 적어주세요."
+          rows={7}
+        />
+        <div className="composer-toolbar">
+          <div className="composer-tools-primary">
+            <input
+              ref={fileInputRef}
+              className="visually-hidden"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={handleFile}
+              id="case-image"
+            />
+            <label className="attach-button" htmlFor="case-image">
+              <span aria-hidden="true">⌕</span> 대화 캡처 첨부
+            </label>
+            <RoleSelector value={role} onChange={onRoleChange} />
+            {file && (
+              <button className="file-chip" type="button" onClick={removeFile} aria-label={`${file.name} 삭제`}>
+                {file.name} <span aria-hidden="true">×</span>
+              </button>
+            )}
+          </div>
+          <div className="submit-area">
+            <span className="character-count">{description.length}/2,000</span>
+            <button
+              className="analyze-button"
+              type="submit"
+              disabled={!ready}
+              aria-label={analyzing ? "판례 비교 중" : "비슷한 판례 찾기"}
+            >
+              <span aria-hidden="true">{analyzing ? "…" : "↑"}</span>
             </button>
-          )}
-          {fileError && <span className="file-error">{fileError}</span>}
+          </div>
         </div>
-        <div className="submit-area">
-          <span className="character-count">{description.length}/2,000</span>
-          <button className="analyze-button" type="submit" disabled={!ready}>
-            {analyzing ? "비교 중…" : "비슷한 판례 찾기"}
-            <span aria-hidden="true">↑</span>
-          </button>
-        </div>
+      </form>
+      {fileError && <p className="file-error" role="alert">{fileError}</p>}
+      {analyzing && <p className="analysis-status" role="status">검증된 공개 판례와 사실관계를 비교하고 있습니다.</p>}
+      <div className="composer-notices" aria-label="서비스 안내">
+        <p><span aria-hidden="true">✦</span> AI가 공개 판례를 검색·비교합니다.</p>
+        <p><span aria-hidden="true">◉</span> 입력과 첨부 파일을 서버로 보내거나 저장하지 않습니다.</p>
       </div>
-      <div className="privacy-line">
-        <span aria-hidden="true">◉</span>
-        이 프로토타입은 입력과 첨부 파일을 서버로 보내거나 저장하지 않습니다.
-      </div>
-    </form>
+    </div>
   );
 }
 
-function HomeView({ role, setRole, description, setDescription, onSubmit, analyzing }) {
+function HomeView({ role, setRole, description, setDescription, onSubmit, analyzing, homeStartRef }) {
   return (
-    <section className="home-view">
+    <section className="home-view" ref={homeStartRef}>
       <div className="hero">
         <div className="hero-medallion" aria-hidden="true">
           <img src="/assets/gavel.png" alt="" />
@@ -229,7 +215,6 @@ function HomeView({ role, setRole, description, setDescription, onSubmit, analyz
         <h1>내 사례와 닮은 판례를<br /><span>사실관계로 비교해보세요</span></h1>
         <p className="hero-copy">법적 결론을 예측하지 않습니다. 공식 판례와 닮은 점·다른 점을 확인할 수 있습니다.</p>
       </div>
-      <AiDisclosure />
       <CaseComposer
         role={role}
         onRoleChange={setRole}
@@ -342,7 +327,7 @@ function EmptyResults({ onHome }) {
   );
 }
 
-function ResultsView({ description, results, onHome }) {
+function ResultsView({ description, results, onHome, resultsStartRef }) {
   const [showAll, setShowAll] = useState(false);
   const facts = useMemo(() => extractCaseFacts(description), [description]);
   const visibleResults = showAll ? results : results.slice(0, 3);
@@ -355,7 +340,7 @@ function ResultsView({ description, results, onHome }) {
   ].filter(Boolean);
 
   return (
-    <section className="results-view">
+    <section className="results-view" ref={resultsStartRef}>
       <div className="results-header">
         <button className="back-button" type="button" onClick={onHome}><span aria-hidden="true">←</span> 입력으로 돌아가기</button>
         <div className="results-title-row">
@@ -372,7 +357,6 @@ function ResultsView({ description, results, onHome }) {
         <span aria-hidden="true">!</span>
         <div><strong>이 결과는 법적 판단이나 결과 예측이 아닙니다.</strong><p>숫자는 공개 판례와의 사실관계 유사도이며, 법적 결론이나 형량을 의미하지 않습니다.</p></div>
       </div>
-      <AiDisclosure compact />
       <Coverage resultCount={results.length} />
 
       {results.length === 0 ? <EmptyResults onHome={onHome} /> : (
@@ -395,10 +379,24 @@ export function App() {
   const [description, setDescription] = useState("");
   const [results, setResults] = useState([]);
   const [analyzing, setAnalyzing] = useState(false);
+  const homeStartRef = useRef(null);
+  const resultsStartRef = useRef(null);
+
+  function motionBehavior() {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  }
+
+  useEffect(() => {
+    if (view !== "results" || !resultsStartRef.current) return;
+    resultsStartRef.current.scrollIntoView({ behavior: motionBehavior(), block: "start" });
+  }, [view]);
 
   function goHome() {
     setView("home");
     setResults([]);
+    window.requestAnimationFrame(() => {
+      homeStartRef.current?.scrollIntoView({ behavior: motionBehavior(), block: "start" });
+    });
   }
 
   function startNewCase() {
@@ -413,28 +411,32 @@ export function App() {
       setResults(rankPrecedents({ role, description }));
       setView("results");
       setAnalyzing(false);
-      window.scrollTo({ top: 0, behavior: "smooth" });
     }, 650);
   }
 
   return (
     <div className="page-background">
-      <div className={`app-shell ${view === "home" ? "is-home" : ""}`}>
+      <div className={`app-shell ${view === "home" ? "is-home" : "has-results"}`}>
         <SideNavigation view={view} onHome={startNewCase} />
         <div className="app-content">
           <TopBar view={view} onHome={startNewCase} />
           <main className="main-content">
-            {view === "home" ? (
-              <HomeView
-                role={role}
-                setRole={setRole}
+            <HomeView
+              role={role}
+              setRole={setRole}
+              description={description}
+              setDescription={setDescription}
+              onSubmit={submitCase}
+              analyzing={analyzing}
+              homeStartRef={homeStartRef}
+            />
+            {view === "results" && (
+              <ResultsView
                 description={description}
-                setDescription={setDescription}
-                onSubmit={submitCase}
-                analyzing={analyzing}
+                results={results}
+                onHome={goHome}
+                resultsStartRef={resultsStartRef}
               />
-            ) : (
-              <ResultsView description={description} results={results} onHome={goHome} />
             )}
           </main>
         </div>
