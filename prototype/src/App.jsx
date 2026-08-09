@@ -2,25 +2,6 @@ import { useMemo, useRef, useState } from "react";
 import { VERIFIED_PRECEDENTS } from "./lib/precedents.js";
 import { extractCaseFacts, rankPrecedents } from "./lib/search.js";
 
-const EXAMPLES = [
-  {
-    label: "게임 채팅",
-    text: "온라인 게임에서 처음 만난 상대와 다투다가 카카오톡으로 성적인 욕설을 한 번 받았습니다.",
-  },
-  {
-    label: "카카오톡 이미지",
-    text: "알고 지내던 사람이 카카오톡으로 원하지 않는 나체 사진을 한 차례 보냈습니다.",
-  },
-  {
-    label: "SNS 멘션",
-    text: "SNS에서 다투던 상대를 차단했는데 제 계정을 멘션한 성적인 게시글을 올렸습니다.",
-  },
-  {
-    label: "송금메모",
-    text: "계좌로 1원을 여러 번 보내면서 송금메모에 성적인 욕설을 반복해서 적었습니다.",
-  },
-];
-
 const FACT_LABELS = {
   medium: {
     bank_transfer: "송금메모",
@@ -189,20 +170,6 @@ function CaseComposer({ role, onRoleChange, description, onDescriptionChange, on
   return (
     <form className="composer" onSubmit={submit}>
       <RoleSelector value={role} onChange={onRoleChange} />
-      <div className="quick-examples" aria-label="빠른 입력 예시">
-        <span>빠른 예시</span>
-        <div>
-          {EXAMPLES.map((example) => (
-            <button
-              type="button"
-              key={example.label}
-              onClick={() => onDescriptionChange(example.text)}
-            >
-              {example.label}
-            </button>
-          ))}
-        </div>
-      </div>
       <div className="composer-divider" />
       <label className="textarea-label" htmlFor="case-description">
         사례를 시간 순서대로 적어주세요
@@ -452,7 +419,7 @@ export function App() {
 
   return (
     <div className="page-background">
-      <div className="app-shell">
+      <div className={`app-shell ${view === "home" ? "is-home" : ""}`}>
         <SideNavigation view={view} onHome={startNewCase} />
         <div className="app-content">
           <TopBar view={view} onHome={startNewCase} />

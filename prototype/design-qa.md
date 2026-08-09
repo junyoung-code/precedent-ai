@@ -3,58 +3,61 @@
 ## Evidence
 
 - Source visual truth:
-  - `/var/folders/7h/pzbct4xn2zz74jxfyclfsn2w0000gn/T/codex-clipboard-389da4fe-99dd-4bfd-ad08-6080d31ee6d8.png` (2302 × 576 px, example-card reference)
-  - `/var/folders/7h/pzbct4xn2zz74jxfyclfsn2w0000gn/T/codex-clipboard-208234ff-217f-4931-92d7-88423b136444.png` (2024 × 966 px, hero/composition reference)
-  - `/var/folders/7h/pzbct4xn2zz74jxfyclfsn2w0000gn/T/codex-clipboard-8b1e6f51-b930-4108-a2c3-8bdfdd394a3c.png` (1074 × 730 px, gavel subject reference)
+  - `/var/folders/7h/pzbct4xn2zz74jxfyclfsn2w0000gn/T/codex-clipboard-6ffe82ce-adef-4615-a38e-544120b26382.png` (3434 × 1884 px, latest landing-page annotation)
+  - `/var/folders/7h/pzbct4xn2zz74jxfyclfsn2w0000gn/T/codex-clipboard-8b1e6f51-b930-4108-a2c3-8bdfdd394a3c.png` (1074 × 730 px, wooden gavel material reference)
 - Implementation screenshots:
-  - `/Users/junyoung/Desktop/판례AI/prototype/design-qa-desktop.png` (1280 × 720 px browser-rendered desktop viewport)
-  - `/Users/junyoung/Desktop/판례AI/prototype/design-qa-mobile.png` (390 × 844 px browser-rendered mobile viewport)
-  - `/Users/junyoung/Desktop/판례AI/prototype/design-qa-results.png` (1280 × 720 px browser-rendered results state)
-- CSS viewport and density: desktop browser capture was clamped by the in-app browser to 1280 × 720 CSS px; mobile capture was 390 × 844 CSS px. Device pixel ratio was the browser default. No density scaling was used for implementation captures.
-- State: empty home form on desktop/mobile, plus a populated victim/game-chat comparison result.
+  - `/Users/junyoung/Desktop/판례AI/prototype/design-qa-desktop.png` (1280 × 720 px desktop viewport)
+  - `/Users/junyoung/Desktop/판례AI/prototype/design-qa-mobile.png` (390 × 922 px full-page mobile capture from a 390 × 844 CSS viewport)
+  - `/Users/junyoung/Desktop/판례AI/prototype/design-qa-results.png` (1280 × 720 px results state)
+- Asset: `/Users/junyoung/Desktop/판례AI/prototype/public/assets/gavel.png` (1254 × 1254 px RGBA)
+- Density normalization: implementation captures use browser-default device density. The differently sized source screenshot was compared for composition and requested deltas, not pixel-level cloning.
+- State: empty landing form on desktop/mobile and populated victim/game-chat results state.
 
 ## Full-view comparison evidence
 
-The three source images and the desktop/mobile implementation captures were opened together in one comparison input. The implementation intentionally preserves the source workspace anatomy while applying the requested changes: the formerly purple hero orb is now a warm brown medallion containing a real generated wooden-gavel asset, the violet accents are mapped to walnut/caramel tokens, and the four example cards are represented as compact quick-select controls inside the composer so they remain visible in the first viewport.
+The latest source annotation, final desktop/mobile captures, and final transparent gavel asset were opened together in one comparison input. The desktop landing now contains the entire input experience inside the 720 px viewport, removes all quick-example controls, and keeps the original brown workspace hierarchy. The emblem is smaller and centered, with both the gavel and sound block visible and a steep, approximately 60-degree handle angle.
 
 ## Focused-region comparison evidence
 
-No separate crop was required. At original resolution, the hero medallion, headline, AI notice, role controls, and four quick examples are all readable in the desktop capture, while the mobile capture exposes the same regions at 390 px without overlap or clipping. The generated gavel has a clean transparent edge, correct diagonal orientation, and no visible chroma halo.
+The original-resolution asset and the rendered emblem were included in the same comparison. The gavel and horizontal sound block remain recognizable at the 64 px medallion size, are centered with even padding, and show no visible chroma fringe against the brown background. A separate crop was unnecessary because the emblem and full composer are clearly readable in the desktop capture.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: the existing Korean system/Pretendard stack and black display hierarchy are preserved; the brown gradient emphasizes only the second headline line. Desktop and mobile wrapping is deliberate and readable.
-- Spacing and layout rhythm: top-bar and hero height were reduced, moving the AI notice, role selection, and all four quick examples above the fold. The composer retains clear group spacing and 2-column mobile quick-example layout.
-- Colors and visual tokens: the cool violet/gray treatment was replaced consistently with walnut, caramel, warm ivory, and warm gray. Green remains only for official-source verification and local-processing status.
-- Image quality and asset fidelity: the orb uses `/public/assets/gavel.png`, a real RGBA raster asset generated from the supplied gavel direction. The crop is centered and sharp at both tested sizes.
-- Copy and content: legal-neutral language, AI-use disclosure, verified-source count, `사실관계 유사도`, AI-summary labeling, and official-source reminder remain intact.
-- Accessibility and interaction: semantic buttons/fieldset/textbox remain keyboard reachable; quick examples have visible focus treatment; mobile tap controls do not overlap the fixed navigation.
+- Fonts and typography: the Korean system/Pretendard hierarchy is preserved. The headline was reduced modestly while retaining its two-line desktop hierarchy and readable mobile wrapping.
+- Spacing and layout rhythm: the desktop top bar, hero, disclosure, role controls, textarea, footer, and privacy line fit within the fixed shell. Measured document scroll height equals viewport height (`720 px`), and no landing-page scroll is available.
+- Colors and visual tokens: existing walnut, caramel, ivory, and official-source green tokens remain unchanged.
+- Image quality and asset fidelity: a real generated RGBA gavel asset replaces the prior wide gavel. The sound block is complete, the handle is steep, and the asset remains sharp at its intended icon size.
+- Copy and content: quick-example labels and controls are absent. Legal-neutral copy, AI-use disclosure, verified-source count, `사실관계 유사도`, AI summary labeling, and official-source reminder remain intact.
+- Accessibility and interaction: role buttons, labeled textarea, attachment input, and submit control remain semantic and keyboard reachable. Mobile retains normal scrolling and fixed bottom navigation.
 
 ## Findings
 
-- No actionable P0, P1, or P2 findings.
+- No actionable P0, P1, or P2 findings remain.
 
 ## Open Questions
 
-- None. The change from large cards to compact buttons is an intentional response to the user's above-the-fold readability request rather than fidelity drift.
+- None.
 
 ## Primary interactions tested
 
-1. Selected `피해자`.
-2. Selected the `게임 채팅` quick example and confirmed that it populated the textarea.
-3. Confirmed that the comparison button became enabled.
-4. Submitted the case and confirmed a verified result card, `AI 생성 요약`, and `공식 원문 보기` link.
-5. Checked browser console warnings and errors in both home and results states: none.
+1. Confirmed `quick-examples` count is `0` in the rendered DOM.
+2. Selected `피해자` and entered a realistic game-chat case.
+3. Confirmed the comparison button became enabled.
+4. Submitted and confirmed the verified result, `AI 생성 요약`, and `공식 원문 보기` link.
+5. Checked browser console warnings and errors: none.
 
 ## Comparison history
 
-- Pass 1: no P0/P1/P2 mismatch remained after implementation. The first-viewport visibility, brown palette, real gavel asset, desktop results state, and mobile responsive state all matched the requested direction, so no visual fix iteration was required.
+- Pass 1 finding `[P2]`: the desktop document itself did not scroll, but the composer bottom extended about 53 px beyond the application shell and was clipped. Fix: changed the fixed five-row textarea from content-derived height to an explicit compact 70 px height.
+- Pass 2 evidence: application shell bottom measured `696 px`, composer bottom `696.44 px` (subpixel border rounding), privacy notice bottom `681.44 px`, document scroll height `720 px`, and viewport height `720 px`. All controls are visible and there is no vertical landing scroll.
+- Asset iteration: the first regenerated gavel still read near 35–40 degrees. It was regenerated with a stricter steep-angle constraint; the final asset visibly approaches the requested 60-degree orientation while keeping the sound block horizontal.
 
 ## Implementation checklist
 
-- [x] Replace purple orb with brown gavel medallion.
-- [x] Apply brown/ivory palette across home and results.
-- [x] Move examples inside the composer and keep all four visible above the fold.
-- [x] Verify desktop, mobile, results, interactions, official-source link, and console state.
+- [x] Remove quick examples from component code and CSS.
+- [x] Fit desktop landing inside a fixed, non-scrolling application shell.
+- [x] Keep mobile scrolling available.
+- [x] Replace the hero asset with a smaller centered gavel plus sound block at a steep angle.
+- [x] Verify results flow, official source link, AI labeling, console state, desktop, and mobile.
 
 final result: passed
