@@ -4,16 +4,25 @@ import test from "node:test";
 
 const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
 
-test("shows the required human-readable AI disclosures", () => {
-  assert.match(
-    appSource,
-    /이 서비스는 AI를 사용하여 공개 판례를 검색·비교하며 일부 설명을 생성합니다/,
+test("shows compact pre-use and generated-result AI disclosures", () => {
+  assert.match(appSource, /AI가 공개 판례를 검색·비교합니다/);
+  assert.equal(
+    appSource.includes("이 서비스는 AI를 사용하여 공개 판례를 검색·비교하며 일부 설명을 생성합니다"),
+    false,
   );
   assert.match(appSource, /AI 생성 요약/);
   assert.match(
     appSource,
-    /AI가 판결문을 요약한 내용입니다\. 정확한 내용은 공식 원문을 확인하십시오/,
+    /정확한 내용은 공식 원문을 확인하십시오/,
   );
+});
+
+test("keeps role selection inside the composer and scrolls to results", () => {
+  assert.match(appSource, /role-segment/);
+  assert.match(appSource, /피해자/);
+  assert.match(appSource, /피신고인/);
+  assert.match(appSource, /scrollIntoView/);
+  assert.match(appSource, /prefers-reduced-motion: reduce/);
 });
 
 test("does not use legal-outcome probability labels", () => {
