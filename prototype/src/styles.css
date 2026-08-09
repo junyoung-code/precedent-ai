@@ -374,6 +374,66 @@ button { color: inherit; }
   .card-actions a { width: 100%; justify-content: center; }
 }
 
+@media (min-width: 901px) and (min-height: 1020px) {
+  .app-shell.is-home .top-bar { height: 82px; }
+  .app-shell.is-home .main-content { height: calc(100% - 82px); }
+  .app-shell.is-home .home-view {
+    height: 100%;
+    padding: 32px 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .app-shell.is-home .hero-medallion {
+    width: 72px;
+    height: 72px;
+    margin-bottom: 14px;
+  }
+
+  .app-shell.is-home .eyebrow {
+    margin-bottom: 12px;
+    font-size: 12px;
+  }
+
+  .app-shell.is-home .hero h1 {
+    font-size: clamp(44px, 3vw, 56px);
+    line-height: 1.1;
+  }
+
+  .app-shell.is-home .hero-copy {
+    margin-top: 18px;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  .app-shell.is-home .ai-disclosure {
+    margin: 28px auto 16px;
+    padding: 13px 16px;
+  }
+
+  .app-shell.is-home .composer { padding: 20px 22px; }
+  .app-shell.is-home .role-fieldset legend { margin-bottom: 12px; font-size: 13px; }
+  .app-shell.is-home .role-option { min-height: 60px; padding: 11px 15px; }
+  .app-shell.is-home .role-option strong { font-size: 15px; }
+  .app-shell.is-home .role-option small { font-size: 12px; }
+  .app-shell.is-home .composer-divider { margin: 20px 0; }
+  .app-shell.is-home .textarea-label { margin-bottom: 10px; font-size: 15px; }
+  .app-shell.is-home .textarea-label span { margin-top: 5px; font-size: 12px; }
+  .app-shell.is-home .composer textarea {
+    height: 112px;
+    min-height: 112px;
+    padding: 15px 16px;
+    font-size: 14px;
+    line-height: 1.65;
+  }
+  .app-shell.is-home .composer-footer { margin-top: 14px; }
+  .app-shell.is-home .attach-button,
+  .app-shell.is-home .file-chip { height: 39px; font-size: 12px; }
+  .app-shell.is-home .analyze-button { height: 43px; font-size: 13px; }
+  .app-shell.is-home .privacy-line { margin-top: 13px; font-size: 10px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
