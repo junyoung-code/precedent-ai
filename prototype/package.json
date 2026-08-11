@@ -5,16 +5,22 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "api": "node --env-file-if-exists=.env.local scripts/api-server.mjs",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
-    "test": "node --test tests/analysis.test.mjs tests/ui-copy.test.mjs tests/ui-layout.test.mjs",
+    "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs",
+    "db:up": "docker compose up -d db",
+    "sync:law": "node --env-file=.env.local scripts/sync-law-open-data.mjs",
+    "rights:law": "node --env-file-if-exists=.env.local scripts/review-law-open-data-rights.mjs",
+    "verify:sources": "node --env-file-if-exists=.env.local scripts/verify-sources.mjs",
+    "test": "node --test tests/*.test.mjs",
     "preview": "vite preview",
     "test:sites": "node --test tests/sites-worker.test.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "5.0.4",
-    "vite": "6.4.2",
+    "pg": "^8.16.3",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
-  },
-  "devDependencies": {}
+    "react-dom": "19.2.0",
+    "vite": "6.4.2"
+  }
 }
