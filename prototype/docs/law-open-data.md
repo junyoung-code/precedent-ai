@@ -87,3 +87,29 @@ npm run api
 - `retrievalScore`: 임베딩 도입 전의 임시 검색 정렬 점수
 
 임베딩 검색이 비활성화된 경우 `retrievalScore`는 키워드 45%, 사실 태그 45%, 쟁점 태그 10%입니다. 활성화된 2C 검색은 키워드 신호를 의미 유사도로 교체합니다. 어느 점수도 법적 가능성이나 최종 사실관계 유사도를 뜻하지 않습니다.
+
+## 임시 입력 세션 삭제 예약
+
+사용자 사례는 검색이 끝나는 즉시 삭제됩니다. 성공·실패 어느 쪽이든 삭제하며, 취소·새 사례·페이지 이탈에서도 브라우저가 삭제를 요청합니다.
+
+그래도 남는 경우가 있습니다. 삭제 요청이 유실되거나 브라우저가 비정상 종료되면 세션이 만료 시각까지 남습니다. 이때를 위해 `intake_sessions`는 `expires_at = created_at + 1 hour` 제약을 갖고, 정리 명령이 백스톱이 됩니다.
+
+```bash
+npm run intake:purge
+```
+
+이 명령은 **예약해서 돌려야 합니다.** 수동 실행에만 의존하면 중단된 입력이 쌓입니다. 실행 간격은 1시간 이하로 잡습니다.
+
+윈도우 개발 환경 예시 (30분 간격):
+
+```powershell
+$action = New-ScheduledTaskAction -Execute "C:\Program Files\nodejs\npm.cmd" `
+  -Argument "run intake:purge" -WorkingDirectory "C:\precedent-ai\prototype"
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) `
+  -RepetitionInterval (New-TimeSpan -Minutes 30)
+Register-ScheduledTask -TaskName "PrecedentAI-IntakePurge" -Action $action -Trigger $trigger -Force
+```
+
+배포 환경에서는 플랫폼의 cron 또는 scheduler를 사용합니다.
+
+정리 명령의 stdout은 `{"deleted": N}`뿐입니다. 세션 내용, 역할, 세션 ID를 출력하지 않으므로 로그에 사례 텍스트가 남지 않습니다. 실패 알림과 재실행 정책은 배포 시점에 정합니다.
