@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { VERIFIED_PRECEDENTS } from "./lib/precedents.js";
-import { extractCaseFacts, rankPrecedents } from "./lib/search.js";
+import { extractCaseFacts } from "./lib/search.js";
+import { redactSensitiveText } from "./lib/privacy-redaction.js";
+import { answerIntake, cancelIntake, completeIntake, createIntake } from "./lib/intake-api.js";
 
 const FACT_LABELS = {
   medium: {
@@ -60,16 +61,16 @@ function SideNavigation({ view, onHome }) {
         ))}
       </nav>
       <div className="nav-bottom">
-        <div className="privacy-dot" title="서버 저장 없음">
+        <div className="privacy-dot" title="가려진 입력만 최대 1시간 임시 저장">
           <span aria-hidden="true">◉</span>
-          <span className="nav-label">로컬 처리</span>
+          <span className="nav-label">1시간 내 삭제</span>
         </div>
       </div>
     </aside>
   );
 }
 
-function TopBar({ view, onHome }) {
+function TopBar({ view, onHome, availableCount }) {
   return (
     <header className="top-bar">
       <button className="product-switcher" type="button" onClick={onHome}>
@@ -80,7 +81,7 @@ function TopBar({ view, onHome }) {
       <div className="top-actions">
         <div className="verified-status">
           <span className="status-dot" aria-hidden="true" />
-          공식 판례 {VERIFIED_PRECEDENTS.length}건 검증
+          {availableCount == null ? "공식 판례 DB 연결" : `공식 판례 ${availableCount}건 검색 가능`}
         </div>
         {view === "results" && (
           <button className="new-case-button" type="button" onClick={onHome}>
@@ -115,11 +116,29 @@ function RoleSelector({ value, onChange }) {
   );
 }
 
-function CaseComposer({ role, onRoleChange, description, onDescriptionChange, onSubmit, analyzing }) {
+function CaseComposer({
+  role,
+  onRoleChange,
+  description,
+  onDescriptionChange,
+  onSubmit,
+  analyzing,
+  allowExternalEmbedding,
+  onExternalEmbeddingChange,
+  intake,
+  onStartIntake,
+  onSubmitAnswers,
+  onCancelIntake,
+}) {
   const fileInputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [fileError, setFileError] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [transcript, setTranscript] = useState("");
+  const [answers, setAnswers] = useState({});
   const ready = role && description.trim().length >= 15 && !analyzing;
+
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   function handleFile(event) {
     const nextFile = event.target.files?.[0];
@@ -135,19 +154,22 @@ function CaseComposer({ role, onRoleChange, description, onDescriptionChange, on
       event.target.value = "";
       return;
     }
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
     setFile(nextFile);
+    setPreviewUrl(URL.createObjectURL(nextFile));
   }
 
   function removeFile() {
     setFile(null);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function submit(event) {
     event.preventDefault();
     if (!ready) return;
-    onSubmit();
-    removeFile();
+    onStartIntake(redactSensitiveText([description, transcript].filter(Boolean).join("\n")).text);
   }
 
   return (
@@ -195,16 +217,55 @@ function CaseComposer({ role, onRoleChange, description, onDescriptionChange, on
         </div>
       </form>
       {fileError && <p className="file-error" role="alert">{fileError}</p>}
+      {file && <section className="capture-review" aria-label="대화 캡처 검토">
+        {previewUrl && <img src={previewUrl} alt="선택한 대화 캡처 미리보기" />}
+        <label htmlFor="capture-transcript">캡처의 필요한 내용을 직접 입력하거나 수정하세요</label>
+        <textarea id="capture-transcript" value={transcript} onChange={(event) => setTranscript(event.target.value.slice(0, 4000))} placeholder="캡처의 필요한 문장을 입력하세요. 이름·연락처는 가려집니다." rows={4} />
+        <p>캡처 이미지는 서버 또는 외부 AI에 전송하지 않습니다.</p>
+      </section>}
+      {intake.questions.length > 0 && <section className="intake-questions" aria-label="추가 사실 확인">
+        <h2>몇 가지만 더 확인할게요</h2>
+        {intake.questions.map((question) => <label key={question.id} htmlFor={`intake-${question.id}`}>{question.prompt}
+          <input id={`intake-${question.id}`} value={answers[question.id] || ""} onChange={(event) => setAnswers({ ...answers, [question.id]: event.target.value })} />
+        </label>)}
+        <div className="intake-actions"><button type="button" onClick={onCancelIntake}>취소하고 입력 지우기</button><button type="button" className="analyze-button intake-complete" disabled={analyzing} onClick={() => onSubmitAnswers(answers)}>확인 후 검색</button></div>
+      </section>}
       {analyzing && <p className="analysis-status" role="status">검증된 공개 판례와 사실관계를 비교하고 있습니다.</p>}
+      <label className="embedding-consent">
+        <input
+          type="checkbox"
+          checked={allowExternalEmbedding}
+          onChange={(event) => onExternalEmbeddingChange(event.target.checked)}
+        />
+        <span>
+          <strong>의미 검색 사용</strong>
+          입력 문장을 OpenAI 임베딩 API로 전송해 의미 검색을 사용합니다.
+          <small>동의하지 않으면 키워드·사실 태그 검색을 사용합니다. 입력은 서비스 DB에 저장하지 않습니다.</small>
+        </span>
+      </label>
       <div className="composer-notices" aria-label="서비스 안내">
         <p><span aria-hidden="true">✦</span> AI가 공개 판례를 검색·비교합니다.</p>
-        <p><span aria-hidden="true">◉</span> 입력과 첨부 파일을 서버로 보내거나 저장하지 않습니다.</p>
+        <p><span aria-hidden="true">◉</span> 입력은 검색 후 바로 삭제되며, 중단된 입력은 최대 1시간 뒤 삭제됩니다.</p>
       </div>
     </div>
   );
 }
 
-function HomeView({ role, setRole, description, setDescription, onSubmit, analyzing, homeStartRef }) {
+function HomeView({
+  role,
+  setRole,
+  description,
+  setDescription,
+  onSubmit,
+  analyzing,
+  allowExternalEmbedding,
+  setAllowExternalEmbedding,
+  intake,
+  onStartIntake,
+  onSubmitAnswers,
+  onCancelIntake,
+  homeStartRef,
+}) {
   return (
     <section className="home-view" ref={homeStartRef}>
       <div className="hero">
@@ -222,6 +283,12 @@ function HomeView({ role, setRole, description, setDescription, onSubmit, analyz
         onDescriptionChange={setDescription}
         onSubmit={onSubmit}
         analyzing={analyzing}
+        allowExternalEmbedding={allowExternalEmbedding}
+        onExternalEmbeddingChange={setAllowExternalEmbedding}
+        intake={intake}
+        onStartIntake={onStartIntake}
+        onSubmitAnswers={onSubmitAnswers}
+        onCancelIntake={onCancelIntake}
       />
     </section>
   );
@@ -270,27 +337,29 @@ function PrecedentCard({ result, rank }) {
         </section>
       </div>
 
-      <section className="summary-box" aria-labelledby={`summary-${result.id}`}>
-        <div className="summary-heading">
-          <div>
-            <span className="ai-summary-badge">AI 생성 요약</span>
-            <h4 id={`summary-${result.id}`}>판례에서 중요하게 본 부분</h4>
+      {result.summary?.length > 0 && (
+        <section className="summary-box" aria-labelledby={`summary-${result.id}`}>
+          <div className="summary-heading">
+            <div>
+              <span className="ai-summary-badge">AI 생성 요약</span>
+              <h4 id={`summary-${result.id}`}>판례에서 중요하게 본 부분</h4>
+            </div>
+            <span className="grounded-badge">근거 위치 연결됨</span>
           </div>
-          <span className="grounded-badge">근거 위치 연결됨</span>
-        </div>
-        <ul className="summary-list">
-          {result.summary.map((sentence) => (
-            <li key={sentence.text}>
-              <p>{sentence.text}</p>
-              <span>{sentence.sourceAnchor}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="source-reminder">AI가 판결문을 요약한 내용입니다. 정확한 내용은 공식 원문을 확인하십시오.</p>
-      </section>
+          <ul className="summary-list">
+            {result.summary.map((sentence) => (
+              <li key={sentence.text}>
+                <p>{sentence.text}</p>
+                <span>{sentence.sourceAnchor}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="source-reminder">AI가 판결문을 요약한 내용입니다. 정확한 내용은 공식 원문을 확인하십시오.</p>
+        </section>
+      )}
 
       <div className="card-actions">
-        <span>국가법령정보센터 · {result.verifiedAt} 확인</span>
+        <span>국가법령정보센터 · {result.verifiedAt ? `${result.verifiedAt} 확인` : "공식 링크 확인"}</span>
         <a href={result.officialUrl} target="_blank" rel="noopener noreferrer">
           공식 원문 보기 <span aria-hidden="true">↗</span>
         </a>
@@ -299,35 +368,52 @@ function PrecedentCard({ result, rank }) {
   );
 }
 
-function Coverage({ resultCount }) {
+const SEARCH_MODE_LABELS = {
+  hybrid_embeddings: "임베딩·사실 태그 검색",
+  fallback_without_embeddings: "키워드·사실 태그 fallback",
+  provisional_without_embeddings: "키워드·사실 태그 검색",
+};
+
+function Coverage({ resultCount, coverage }) {
   return (
     <div className="coverage-panel">
       <div className="coverage-stat">
-        <span>비교 범위</span>
-        <strong>{VERIFIED_PRECEDENTS.length}건</strong>
+        <span>검색 가능</span>
+        <strong>{coverage.availableCount}건</strong>
       </div>
       <div className="coverage-divider" />
       <div className="coverage-copy">
         <strong>국가법령정보센터 공식 공개 판례</strong>
-        <p>사건번호·법원·선고일·공식 URL을 직접 확인한 판례만 비교했습니다.</p>
+        <p>{SEARCH_MODE_LABELS[coverage.scoring?.status] || "검증된 DB 검색"} · 이번 요청에서 {coverage.comparedCount}건을 비교했습니다.</p>
       </div>
       <div className="coverage-result">기준 이상 <strong>{resultCount}건</strong></div>
     </div>
   );
 }
 
-function EmptyResults({ onHome }) {
+function EmptyResults({ onHome, availableCount }) {
   return (
     <div className="empty-results">
       <div className="empty-orb" aria-hidden="true">∅</div>
       <h2>기준 이상으로 비슷한 판례가 없습니다</h2>
-      <p>현재 검증된 {VERIFIED_PRECEDENTS.length}건 안에서 사실관계 유사도 55점 이상인 판례를 찾지 못했습니다. 없는 판례를 만들어 보여주지 않습니다.</p>
+      <p>현재 검색 가능한 {availableCount}건 안에서 기준 이상인 판례를 찾지 못했습니다. 없는 판례를 만들어 보여주지 않습니다.</p>
       <button type="button" onClick={onHome}>사례를 더 구체적으로 작성하기</button>
     </div>
   );
 }
 
-function ResultsView({ description, results, onHome, resultsStartRef }) {
+function ErrorResults({ onRetry }) {
+  return (
+    <div className="empty-results error-results" role="alert">
+      <div className="empty-orb" aria-hidden="true">!</div>
+      <h2>검색 서버에 연결하지 못했습니다</h2>
+      <p>판례를 임의로 만들어 대신 보여주지 않습니다. 연결 상태를 확인한 뒤 다시 시도해주세요.</p>
+      <button type="button" onClick={onRetry}>다시 검색하기</button>
+    </div>
+  );
+}
+
+function ResultsView({ description, results, coverage, searchFailed, onRetry, onHome, resultsStartRef }) {
   const [showAll, setShowAll] = useState(false);
   const facts = useMemo(() => extractCaseFacts(description), [description]);
   const visibleResults = showAll ? results : results.slice(0, 3);
@@ -357,9 +443,11 @@ function ResultsView({ description, results, onHome, resultsStartRef }) {
         <span aria-hidden="true">!</span>
         <div><strong>이 결과는 법적 판단이나 결과 예측이 아닙니다.</strong><p>숫자는 공개 판례와의 사실관계 유사도이며, 법적 결론이나 형량을 의미하지 않습니다.</p></div>
       </div>
-      <Coverage resultCount={results.length} />
+      {!searchFailed && <Coverage resultCount={results.length} coverage={coverage} />}
 
-      {results.length === 0 ? <EmptyResults onHome={onHome} /> : (
+      {searchFailed ? <ErrorResults onRetry={onRetry} /> : results.length === 0 ? (
+        <EmptyResults onHome={onHome} availableCount={coverage.availableCount} />
+      ) : (
         <div className="results-list">
           {visibleResults.map((result, index) => <PrecedentCard result={result} rank={index + 1} key={result.id} />)}
           {!showAll && results.length > 3 && (
@@ -377,8 +465,13 @@ export function App() {
   const [view, setView] = useState("home");
   const [role, setRole] = useState("");
   const [description, setDescription] = useState("");
+  const [allowExternalEmbedding, setAllowExternalEmbedding] = useState(false);
   const [results, setResults] = useState([]);
+  const [coverage, setCoverage] = useState({ availableCount: null, comparedCount: 0, scoring: null });
+  const [searchFailed, setSearchFailed] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [intake, setIntake] = useState({ sessionId: null, questions: [] });
+  const [submittedDescription, setSubmittedDescription] = useState("");
   const homeStartRef = useRef(null);
   const resultsStartRef = useRef(null);
 
@@ -394,24 +487,78 @@ export function App() {
   function goHome() {
     setView("home");
     setResults([]);
+    setSearchFailed(false);
     window.requestAnimationFrame(() => {
       homeStartRef.current?.scrollIntoView({ behavior: motionBehavior(), block: "start" });
     });
   }
 
   function startNewCase() {
+    if (intake.sessionId) cancelIntake({ sessionId: intake.sessionId }).catch(() => {});
+    setIntake({ sessionId: null, questions: [] });
     setRole("");
     setDescription("");
+    setAllowExternalEmbedding(false);
     goHome();
   }
 
-  function submitCase() {
+  async function finishIntake(sessionId) {
     setAnalyzing(true);
-    window.setTimeout(() => {
-      setResults(rankPrecedents({ role, description }));
+    setSearchFailed(false);
+    try {
+      const response = await completeIntake({ sessionId, allowExternalEmbedding });
+      setResults(response.results);
+      setCoverage({
+        availableCount: response.availableCount,
+        comparedCount: response.comparedCount,
+        scoring: response.scoring,
+      });
       setView("results");
+      setIntake({ sessionId: null, questions: [] });
+    } catch {
+      setResults([]);
+      setCoverage({ availableCount: null, comparedCount: 0, scoring: null });
+      setSearchFailed(true);
+      setView("results");
+    } finally {
       setAnalyzing(false);
-    }, 650);
+    }
+  }
+
+  async function startIntake(redactedText) {
+    if (analyzing) return;
+    setAnalyzing(true);
+    setSearchFailed(false);
+    try {
+      const response = await createIntake({ role, redactedText });
+      setSubmittedDescription(redactedText);
+      setIntake({ sessionId: response.sessionId, questions: response.questions || [] });
+      if ((response.questions || []).length === 0) await finishIntake(response.sessionId);
+    } catch {
+      setSearchFailed(true);
+      setView("results");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  async function submitAnswers(answers) {
+    if (!intake.sessionId || analyzing) return;
+    setAnalyzing(true);
+    try {
+      await answerIntake({ sessionId: intake.sessionId, answers });
+      await finishIntake(intake.sessionId);
+    } catch {
+      setSearchFailed(true);
+      setView("results");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  function cancelCurrentIntake() {
+    if (intake.sessionId) cancelIntake({ sessionId: intake.sessionId }).catch(() => {});
+    setIntake({ sessionId: null, questions: [] });
   }
 
   return (
@@ -419,21 +566,30 @@ export function App() {
       <div className={`app-shell ${view === "home" ? "is-home" : "has-results"}`}>
         <SideNavigation view={view} onHome={startNewCase} />
         <div className="app-content">
-          <TopBar view={view} onHome={startNewCase} />
+          <TopBar view={view} onHome={startNewCase} availableCount={coverage.availableCount} />
           <main className="main-content">
             <HomeView
               role={role}
               setRole={setRole}
               description={description}
               setDescription={setDescription}
-              onSubmit={submitCase}
+              onSubmit={startIntake}
               analyzing={analyzing}
+              allowExternalEmbedding={allowExternalEmbedding}
+              setAllowExternalEmbedding={setAllowExternalEmbedding}
+              intake={intake}
+              onStartIntake={startIntake}
+              onSubmitAnswers={submitAnswers}
+              onCancelIntake={cancelCurrentIntake}
               homeStartRef={homeStartRef}
             />
             {view === "results" && (
               <ResultsView
-                description={description}
+                description={submittedDescription}
                 results={results}
+                coverage={coverage}
+                searchFailed={searchFailed}
+                onRetry={() => intake.sessionId && finishIntake(intake.sessionId)}
                 onHome={goHome}
                 resultsStartRef={resultsStartRef}
               />

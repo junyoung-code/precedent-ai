@@ -36,3 +36,15 @@ test("keeps the no-fabrication empty state visible", () => {
   assert.match(appSource, /없는 판례를 만들어 보여주지 않습니다/);
   assert.match(appSource, /공식 원문 보기/);
 });
+
+test("requires explicit external embedding consent and uses the private intake client", () => {
+  assert.match(appSource, /OpenAI 임베딩 API로 전송/);
+  assert.match(appSource, /allowExternalEmbedding/);
+  assert.match(appSource, /createIntake/);
+  assert.match(appSource, /completeIntake/);
+  assert.match(appSource, /캡처 이미지는 서버 또는 외부 AI에 전송하지 않습니다/);
+  assert.match(appSource, /중단된 입력은 최대 1시간 뒤 삭제됩니다/);
+  assert.doesNotMatch(appSource, /rankPrecedents/);
+  assert.match(appSource, /result\.summary\?\.length/);
+  assert.match(appSource, /검색 서버에 연결하지 못했습니다/);
+});

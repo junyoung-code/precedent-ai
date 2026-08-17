@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { upsertPrecedentFactTags } from "./precedent-fact-tags.mjs";
 
 export const ALLOWED_OFFICIAL_HOSTS = new Set([
   "law.go.kr",
@@ -106,6 +107,11 @@ export async function verifyPrecedents({ pool, fetchImpl = fetch, limit = 100 })
            VALUES ($1, $2, $3, $4)`,
           [record.id, `p${String(index + 1).padStart(3, "0")}`, index + 1, body],
         );
+      }
+      if (technicalVerified) {
+        await upsertPrecedentFactTags({ connection, precedentId: record.id, sourceText: record.source_text });
+      } else {
+        await connection.query("DELETE FROM precedent_fact_tags WHERE precedent_id = $1", [record.id]);
       }
       await connection.query(
         `UPDATE precedents SET

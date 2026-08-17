@@ -1,0 +1,25 @@
+async function request(path, options = {}, fetchImpl = fetch) {
+  let response;
+  try {
+    response = await fetchImpl(path, options);
+  } catch {
+    throw Object.assign(new Error("입력 서버에 연결하지 못했습니다."), { code: "INTAKE_UNAVAILABLE" });
+  }
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw Object.assign(new Error(payload.error || "INTAKE_FAILED"), { code: payload.error || "INTAKE_FAILED" });
+  return payload;
+}
+
+export const createIntake = ({ role, redactedText, fetchImpl }) => request("/api/intake", {
+  method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ role, redactedText }),
+}, fetchImpl);
+
+export const answerIntake = ({ sessionId, answers, fetchImpl }) => request(`/api/intake/${encodeURIComponent(sessionId)}/answers`, {
+  method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ answers }),
+}, fetchImpl);
+
+export const completeIntake = ({ sessionId, allowExternalEmbedding, fetchImpl }) => request(`/api/intake/${encodeURIComponent(sessionId)}/complete`, {
+  method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ allowExternalEmbedding, limit: 5 }),
+}, fetchImpl);
+
+export const cancelIntake = ({ sessionId, fetchImpl }) => request(`/api/intake/${encodeURIComponent(sessionId)}`, { method: "DELETE" }, fetchImpl);

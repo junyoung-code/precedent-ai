@@ -12,6 +12,13 @@
     "sync:law": "node --env-file=.env.local scripts/sync-law-open-data.mjs",
     "rights:law": "node --env-file-if-exists=.env.local scripts/review-law-open-data-rights.mjs",
     "verify:sources": "node --env-file-if-exists=.env.local scripts/verify-sources.mjs",
+    "tags:backfill": "node --env-file-if-exists=.env.local scripts/backfill-fact-tags.mjs",
+    "embeddings:backfill": "node --env-file-if-exists=.env.local scripts/backfill-embeddings.mjs",
+    "summaries:backfill": "node --env-file-if-exists=.env.local scripts/backfill-summaries.mjs",
+    "summaries:estimate": "node --env-file-if-exists=.env.local scripts/estimate-summaries.mjs",
+    "data:check": "node --env-file-if-exists=.env.local scripts/check-data-integrity.mjs",
+    "intake:purge": "node --env-file-if-exists=.env.local scripts/purge-expired-intake-sessions.mjs",
+    "quality:evaluate": "node --env-file-if-exists=.env.local scripts/evaluate-search-quality.mjs",
     "test": "node --test tests/*.test.mjs",
     "preview": "vite preview",
     "test:sites": "node --test tests/sites-worker.test.mjs"
