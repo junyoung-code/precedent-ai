@@ -29,3 +29,18 @@ export const completeIntake = async ({ sessionId, allowExternalEmbedding, fetchI
 );
 
 export const cancelIntake = ({ sessionId, fetchImpl }) => request(`/api/intake/${encodeURIComponent(sessionId)}`, { method: "DELETE" }, fetchImpl);
+
+/**
+ * Release a session while the page is going away. `pagehide` leaves no time to
+ * read a response and a normal fetch would be cancelled mid-flight, so this is
+ * fire-and-forget with keepalive. (sendBeacon cannot issue DELETE.)
+ */
+export function abandonIntake({ sessionId, fetchImpl = fetch }) {
+  if (!sessionId) return false;
+  try {
+    fetchImpl(`/api/intake/${encodeURIComponent(sessionId)}`, { method: "DELETE", keepalive: true });
+  } catch {
+    // Nothing to recover during teardown; the 1-hour purge is the backstop.
+  }
+  return true;
+}

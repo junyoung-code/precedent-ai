@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { extractCaseFacts } from "./lib/search.js";
 import { redactSensitiveText } from "./lib/privacy-redaction.js";
-import { answerIntake, cancelIntake, completeIntake, createIntake } from "./lib/intake-api.js";
+import { abandonIntake, answerIntake, cancelIntake, completeIntake, createIntake } from "./lib/intake-api.js";
 
 const FACT_LABELS = {
   medium: {
@@ -551,6 +551,25 @@ export function App() {
   const [submittedDescription, setSubmittedDescription] = useState("");
   const homeStartRef = useRef(null);
   const resultsStartRef = useRef(null);
+  // The live session id, mirrored outside React state so the leave-the-page
+  // handler can read it without resubscribing on every change.
+  const activeSessionRef = useRef(null);
+  // Kept so a retry can rebuild an equivalent session after the server deleted
+  // the failed one.
+  const answersRef = useRef({});
+
+  function trackIntake(next) {
+    activeSessionRef.current = next.sessionId;
+    setIntake(next);
+  }
+
+  /** Stop tracking the session first, then tell the server once. */
+  function releaseIntake() {
+    const sessionId = activeSessionRef.current;
+    activeSessionRef.current = null;
+    setIntake({ sessionId: null, questions: [] });
+    if (sessionId) cancelIntake({ sessionId }).catch(() => {});
+  }
 
   function motionBehavior() {
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
@@ -560,6 +579,22 @@ export function App() {
     if (view !== "results" || !resultsStartRef.current) return;
     resultsStartRef.current.scrollIntoView({ behavior: motionBehavior(), block: "start" });
   }, [view]);
+
+  // A closing tab never runs React cleanup, so an abandoned session needs both
+  // paths covered. Without this the redacted text waits for the 1-hour purge.
+  useEffect(() => {
+    function abandon() {
+      const sessionId = activeSessionRef.current;
+      if (!sessionId) return;
+      activeSessionRef.current = null;
+      abandonIntake({ sessionId });
+    }
+    window.addEventListener("pagehide", abandon);
+    return () => {
+      window.removeEventListener("pagehide", abandon);
+      abandon();
+    };
+  }, []);
 
   function goHome() {
     setView("home");
@@ -571,10 +606,11 @@ export function App() {
   }
 
   function startNewCase() {
-    if (intake.sessionId) cancelIntake({ sessionId: intake.sessionId }).catch(() => {});
-    setIntake({ sessionId: null, questions: [] });
+    releaseIntake();
+    answersRef.current = {};
     setRole("");
     setDescription("");
+    setSubmittedDescription("");
     setAllowExternalEmbedding(false);
     // Remount the composer so the capture, its transcript and any answers go with it.
     setCaseKey((key) => key + 1);
@@ -584,6 +620,10 @@ export function App() {
   async function finishIntake(sessionId) {
     setAnalyzing(true);
     setSearchFailed(false);
+    // The server deletes the session whether the search succeeds or fails, so
+    // stop tracking it now. Holding the id is what made retry always 404.
+    activeSessionRef.current = null;
+    setIntake({ sessionId: null, questions: [] });
     try {
       const response = await completeIntake({ sessionId, allowExternalEmbedding });
       setResults(response.results);
@@ -593,7 +633,6 @@ export function App() {
         scoring: response.scoring,
       });
       setView("results");
-      setIntake({ sessionId: null, questions: [] });
     } catch {
       setResults([]);
       setCoverage({ availableCount: null, comparedCount: 0, scoring: null });
@@ -608,10 +647,13 @@ export function App() {
     if (analyzing) return;
     setAnalyzing(true);
     setSearchFailed(false);
+    // Remember the text before calling out: a retry needs it even when the
+    // very first request is what failed.
+    setSubmittedDescription(redactedText);
+    answersRef.current = {};
     try {
       const response = await createIntake({ role, redactedText });
-      setSubmittedDescription(redactedText);
-      setIntake({ sessionId: response.sessionId, questions: response.questions || [] });
+      trackIntake({ sessionId: response.sessionId, questions: response.questions || [] });
       if ((response.questions || []).length === 0) await finishIntake(response.sessionId);
     } catch {
       setSearchFailed(true);
@@ -624,6 +666,7 @@ export function App() {
   async function submitAnswers(answers) {
     if (!intake.sessionId || analyzing) return;
     setAnalyzing(true);
+    answersRef.current = answers;
     try {
       await answerIntake({ sessionId: intake.sessionId, answers });
       await finishIntake(intake.sessionId);
@@ -635,9 +678,47 @@ export function App() {
     }
   }
 
+  /**
+   * A failed search takes its session with it, by design. Retrying therefore
+   * builds a fresh session from the redacted text still held in the browser
+   * rather than reusing an id the server has already deleted.
+   */
+  async function retrySearch() {
+    if (analyzing || !role || !submittedDescription) return;
+    setAnalyzing(true);
+    setSearchFailed(false);
+    try {
+      const session = await createIntake({ role, redactedText: submittedDescription });
+      const questions = session.questions || [];
+      if (questions.length === 0) {
+        await finishIntake(session.sessionId);
+        return;
+      }
+
+      const answers = {};
+      for (const question of questions) {
+        const stored = String(answersRef.current[question.id] || "").trim();
+        if (stored) answers[question.id] = stored;
+      }
+      // The server requires every asked answer, so ask again rather than fail.
+      if (questions.some((question) => !answers[question.id])) {
+        trackIntake({ sessionId: session.sessionId, questions });
+        goHome();
+        return;
+      }
+
+      await answerIntake({ sessionId: session.sessionId, answers });
+      await finishIntake(session.sessionId);
+    } catch {
+      setSearchFailed(true);
+      setView("results");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   function cancelCurrentIntake() {
-    if (intake.sessionId) cancelIntake({ sessionId: intake.sessionId }).catch(() => {});
-    setIntake({ sessionId: null, questions: [] });
+    releaseIntake();
   }
 
   return (
@@ -669,7 +750,7 @@ export function App() {
                 results={results}
                 coverage={coverage}
                 searchFailed={searchFailed}
-                onRetry={() => intake.sessionId && finishIntake(intake.sessionId)}
+                onRetry={retrySearch}
                 onHome={goHome}
                 resultsStartRef={resultsStartRef}
               />

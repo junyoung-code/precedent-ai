@@ -37,6 +37,24 @@ test("keeps the no-fabrication empty state visible", () => {
   assert.match(appSource, /공식 원문 보기/);
 });
 
+test("retries a failed search with a new session instead of the deleted one", () => {
+  assert.match(appSource, /onRetry=\{retrySearch\}/);
+  // Retry rebuilds a session from what the browser still holds.
+  assert.match(appSource, /createIntake\(\{ role, redactedText: submittedDescription \}\)/);
+  assert.match(appSource, /answersRef\.current\[question\.id\]/);
+  // The privacy contract stays: the session is released as the search settles.
+  assert.match(appSource, /activeSessionRef\.current = null;\s*\n\s*setIntake\(\{ sessionId: null, questions: \[\] \}\);/);
+  assert.doesNotMatch(appSource, /onRetry=\{\(\) => intake\.sessionId/);
+});
+
+test("releases an abandoned session on unmount and on page hide", () => {
+  assert.match(appSource, /addEventListener\("pagehide", abandon\)/);
+  assert.match(appSource, /removeEventListener\("pagehide", abandon\)/);
+  assert.match(appSource, /abandonIntake\(\{ sessionId \}\)/);
+  // One release per session: the ref is cleared before the request goes out.
+  assert.match(appSource, /activeSessionRef\.current = null;\s*\n\s*abandonIntake/);
+});
+
 test("accepts a capture from the clipboard and from a drop, not just the file picker", () => {
   assert.match(appSource, /onPaste=\{handlePaste\}/);
   assert.match(appSource, /onDrop=\{handleDrop\}/);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { answerIntake, cancelIntake, completeIntake, createIntake } from "../src/lib/intake-api.js";
+import { abandonIntake, answerIntake, cancelIntake, completeIntake, createIntake } from "../src/lib/intake-api.js";
 
 function fakeFetch(expectedPath, expectedMethod) {
   return async (path, options) => {
@@ -20,6 +20,27 @@ test("uses dedicated answer, completion, and cancellation paths", async () => {
   await answerIntake({ sessionId: "s1", answers: { medium: "카카오톡" }, fetchImpl: fakeFetch("/api/intake/s1/answers", "POST") });
   await completeIntake({ sessionId: "s1", allowExternalEmbedding: false, fetchImpl: fakeFetch("/api/intake/s1/complete", "POST") });
   await cancelIntake({ sessionId: "s1", fetchImpl: fakeFetch("/api/intake/s1", "DELETE") });
+});
+
+test("abandons a session without waiting for the response", () => {
+  const calls = [];
+  const sent = abandonIntake({
+    sessionId: "s1",
+    fetchImpl: (path, options) => { calls.push([path, options]); return new Promise(() => {}); },
+  });
+
+  assert.equal(sent, true);
+  assert.deepEqual(calls[0], ["/api/intake/s1", { method: "DELETE", keepalive: true }]);
+});
+
+test("does not fire an abandon request without a session", () => {
+  let called = false;
+  assert.equal(abandonIntake({ sessionId: null, fetchImpl: () => { called = true; } }), false);
+  assert.equal(called, false);
+});
+
+test("swallows a teardown failure so page unload is never blocked", () => {
+  assert.equal(abandonIntake({ sessionId: "s1", fetchImpl: () => { throw new Error("gone"); } }), true);
 });
 
 test("maps completion results into the shape the result cards read", async () => {
