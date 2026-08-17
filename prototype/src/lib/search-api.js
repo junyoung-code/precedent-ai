@@ -124,6 +124,22 @@ function searchError(code, message) {
   return Object.assign(new Error(message), { code });
 }
 
+/**
+ * Shape a raw search payload for the results screen. Both the direct search
+ * endpoint and the intake completion endpoint return the same body, and the
+ * cards read the mapped shape, so both paths have to come through here.
+ */
+export function mapSearchPayload(payload, fallbackQuery = "") {
+  return {
+    query: String(payload?.query || fallbackQuery || ""),
+    queryFacts: payload?.queryFacts || {},
+    availableCount: Math.max(0, Number(payload?.availableCount) || 0),
+    comparedCount: Math.max(0, Number(payload?.comparedCount) || 0),
+    scoring: payload?.scoring || { status: "unknown" },
+    results: Array.isArray(payload?.results) ? payload.results.map(mapResult).filter(Boolean) : [],
+  };
+}
+
 export async function searchSimilarPrecedents({
   query,
   limit = 3,
@@ -157,12 +173,5 @@ export async function searchSimilarPrecedents({
     throw searchError("SEARCH_RESPONSE_INVALID", "검색 응답 형식이 올바르지 않습니다.");
   }
 
-  return {
-    query: String(payload.query || query || ""),
-    queryFacts: payload.queryFacts || {},
-    availableCount: Math.max(0, Number(payload.availableCount) || 0),
-    comparedCount: Math.max(0, Number(payload.comparedCount) || 0),
-    scoring: payload.scoring || { status: "unknown" },
-    results: Array.isArray(payload.results) ? payload.results.map(mapResult).filter(Boolean) : [],
-  };
+  return mapSearchPayload(payload, query);
 }
