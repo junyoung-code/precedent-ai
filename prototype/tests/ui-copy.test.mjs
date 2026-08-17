@@ -37,6 +37,13 @@ test("keeps the no-fabrication empty state visible", () => {
   assert.match(appSource, /공식 원문 보기/);
 });
 
+test("keeps the save-result button labelled when its text is hidden", () => {
+  // A bare text node cannot be hidden by CSS, so the label needs an element
+  // and the button needs a name that survives hiding it.
+  assert.match(appSource, /className="print-button-label">결과 저장</);
+  assert.match(appSource, /className="print-button"[\s\S]{0,120}?aria-label="결과 저장"/);
+});
+
 test("explains a card that carries no summary instead of leaving a gap", () => {
   assert.match(appSource, /SUMMARY_ABSENCE_REASON/);
   assert.match(appSource, /다른 죄명이 함께 판단된 판례여서 요약을 제공하지 않습니다/);

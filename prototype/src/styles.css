@@ -289,7 +289,11 @@ button { color: inherit; }
 .coverage-copy p { margin: 4px 0 0; color: #81838e; font-size: 10px; }
 .coverage-result { padding: 9px 12px; border-radius: 9px; background: white; color: #777985; font-size: 11px; box-shadow: 0 4px 14px rgba(34,34,44,.05); }
 .coverage-result strong { color: var(--violet); }
-.results-list { margin-top: 18px; display: grid; gap: 16px; }
+/* Case names run long and the identity line deliberately does not wrap, so the
+   column needs an explicit zero floor. Without it a grid column's automatic
+   minimum is the card's min-content width and the whole results view stretches
+   past the viewport — only visible once real precedents render. */
+.results-list { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .precedent-card { padding: 24px; border: 1px solid #e5e5eb; border-radius: 19px; background: white; box-shadow: 0 12px 34px rgba(33,32,42,.055); }
 .card-topline { display: flex; align-items: flex-start; gap: 14px; }
 .rank-badge { width: 28px; height: 28px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 8px; background: #4f3020; color: white; font-size: 12px; font-weight: 800; }
@@ -376,8 +380,9 @@ button { color: inherit; }
   .embedding-consent strong { margin-bottom: 2px; }
   .embedding-consent small { margin-top: 3px; }
   .results-title-row { align-items: flex-end; }
+  /* Icon only on narrow screens; the button keeps its accessible name. */
   .print-button { width: 42px; padding: 0; justify-content: center; }
-  .print-button span + * { display: none; }
+  .print-button-label { display: none; }
   .coverage-panel { align-items: flex-start; flex-wrap: wrap; gap: 12px; }
   .coverage-divider { display: none; }
   .coverage-copy { min-width: calc(100% - 80px); }

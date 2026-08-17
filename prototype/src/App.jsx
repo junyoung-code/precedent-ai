@@ -523,7 +523,10 @@ function ResultsView({ description, results, coverage, searchFailed, onRetry, on
             <h1>사실관계가 닮은 판례</h1>
             <div className="fact-chips">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
           </div>
-          <button className="print-button" type="button" onClick={() => window.print()}><span aria-hidden="true">⇩</span> 결과 저장</button>
+          <button className="print-button" type="button" onClick={() => window.print()} aria-label="결과 저장">
+            <span aria-hidden="true">⇩</span>
+            <span className="print-button-label">결과 저장</span>
+          </button>
         </div>
       </div>
 
