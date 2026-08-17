@@ -101,6 +101,27 @@ test("hides summaries unless every sentence has server-grounded text and source 
   assert.equal(response.results[0].summary, null);
 });
 
+test("passes through why a precedent carries no summary", async () => {
+  const base = {
+    id: "p1", court: "대법원", caseNumber: "2020도11185",
+    caseName: "군인등강제추행·성폭력범죄의처벌등에관한특례법위반(통신매체이용음란)",
+    decisionDate: "2022-09-29",
+    officialUrl: "https://www.law.go.kr/LSW/precInfoP.do?precSeq=231731",
+    retrievalScore: 70, summary: null,
+  };
+  const fetchImpl = async (_path, options) => new Response(JSON.stringify({
+    results: [{ ...base, precedentFocus: JSON.parse(options.body).query }],
+  }), { status: 200 });
+
+  for (const focus of ["mixed", "peripheral", "focused"]) {
+    const result = await searchSimilarPrecedents({ query: focus, fetchImpl });
+    assert.equal(result.results[0].focus, focus);
+  }
+  // An unexpected value must not leak into the card as a missing reason.
+  const unknown = await searchSimilarPrecedents({ query: "something-else", fetchImpl });
+  assert.equal(unknown.results[0].focus, "focused");
+});
+
 test("uses a stable error code when the search server is unavailable", async () => {
   const fetchImpl = async () => ({ ok: false, status: 500 });
   await assert.rejects(

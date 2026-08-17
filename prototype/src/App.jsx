@@ -378,6 +378,14 @@ function ScoreRing({ score }) {
   );
 }
 
+// A summary is only generated for precedents about this offence alone. Mixing
+// other charges into one summary risks presenting their reasoning as this one's.
+const SUMMARY_ABSENCE_REASON = {
+  mixed: "다른 죄명이 함께 판단된 판례여서 요약을 제공하지 않습니다. 공식 원문을 확인하세요.",
+  peripheral: "이 사건의 주된 죄명이 통신매체이용음란이 아니어서 요약을 제공하지 않습니다. 공식 원문을 확인하세요.",
+  focused: "이 판례는 아직 요약이 준비되지 않았습니다. 공식 원문을 확인하세요.",
+};
+
 function PrecedentCard({ result, rank }) {
   return (
     <article className="precedent-card">
@@ -432,6 +440,10 @@ function PrecedentCard({ result, rank }) {
           </ul>
           <p className="source-reminder">AI가 판결문을 요약한 내용입니다. 정확한 내용은 공식 원문을 확인하십시오.</p>
         </section>
+      )}
+
+      {!result.summary?.length && (
+        <p className="summary-absent">{SUMMARY_ABSENCE_REASON[result.focus] || SUMMARY_ABSENCE_REASON.focused}</p>
       )}
 
       <div className="card-actions">

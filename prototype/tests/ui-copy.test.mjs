@@ -37,6 +37,16 @@ test("keeps the no-fabrication empty state visible", () => {
   assert.match(appSource, /공식 원문 보기/);
 });
 
+test("explains a card that carries no summary instead of leaving a gap", () => {
+  assert.match(appSource, /SUMMARY_ABSENCE_REASON/);
+  assert.match(appSource, /다른 죄명이 함께 판단된 판례여서 요약을 제공하지 않습니다/);
+  assert.match(appSource, /!result\.summary\?\.length/);
+  // The explanation must not read as a legal conclusion.
+  for (const banned of ["무죄", "유죄", "혐의없음"]) {
+    assert.equal(appSource.includes(`${banned}여서 요약`), false);
+  }
+});
+
 test("retries a failed search with a new session instead of the deleted one", () => {
   assert.match(appSource, /onRetry=\{retrySearch\}/);
   // Retry rebuilds a session from what the browser still holds.

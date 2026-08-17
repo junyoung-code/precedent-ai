@@ -237,6 +237,7 @@ button { color: inherit; }
 .capture-review label, .intake-questions label { display: grid; gap: 7px; color: #3a2a22; font-weight: 650; }
 .capture-review textarea, .intake-questions input { box-sizing: border-box; width: 100%; border: 1px solid #d6c7ba; border-radius: 9px; background: #fff; padding: 10px 12px; color: #241913; font: inherit; }
 .capture-review p { margin: 10px 0 0; color: #6f5b50; font-size: 13px; }
+.summary-absent { margin: 13px 0 0; padding: 11px 13px; border: 1px dashed #ded2c7; border-radius: 12px; background: #fbf8f5; color: #7c6a5e; font-size: 12px; line-height: 1.5; }
 .capture-notice { margin-top: 10px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #e6c9a8; border-radius: 11px; background: #fdf5ea; }
 .capture-notice p { margin: 0; color: #7a4f22; font-size: 12px; }
 .capture-notice button { flex: 0 0 auto; height: 32px; padding: 0 12px; border: 1px solid #dcc0a2; border-radius: 9px; background: #fff; color: #7a4f22; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }

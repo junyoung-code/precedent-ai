@@ -108,6 +108,11 @@ function mapResult(result) {
     decisionDate: result.decisionDate,
     officialUrl: result.officialUrl,
     verifiedAt: result.verifiedAt || null,
+    // Why a card may carry no summary. Only single-offence precedents are
+    // summarised, so most cards need to say so rather than look broken.
+    focus: result.precedentFocus === "mixed" || result.precedentFocus === "peripheral"
+      ? result.precedentFocus
+      : "focused",
     similarity: {
       semantic: safeScore(result.semanticScore),
       facts: safeScore(result.tagScore),
