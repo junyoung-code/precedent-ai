@@ -212,13 +212,17 @@ button { color: inherit; }
 }
 
 .composer:focus-within { border-color: #c8aa96; box-shadow: 0 18px 55px rgba(62, 42, 31, 0.11), 0 0 0 3px rgba(139,90,60,.08); }
+.composer.is-dragging { border-color: var(--violet); border-style: dashed; background: #fffaf5; }
+.composer.is-dragging textarea { background: transparent; }
 .composer textarea { width: 100%; height: 150px; min-height: 150px; padding: 24px 26px; resize: none; border: 0; border-radius: 0; outline: none; background: transparent; color: var(--ink); font-size: 15px; line-height: 1.65; }
 .composer textarea:focus { background: #fffdfa; }
 .composer textarea::placeholder { color: #a1a3ad; }
 .composer-toolbar { min-height: 86px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid var(--line); background: rgba(255,255,255,.66); }
 .composer-tools-primary, .submit-area { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .attach-button, .file-chip { height: 38px; padding: 0 13px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #e0e1e6; border-radius: 10px; background: #fff; font-size: 11px; font-weight: 700; cursor: pointer; }
-.file-chip { max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #70462f; background: #f8eee7; }
+.file-chip { max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #70462f; background: #f8eee7; transition: color .16s ease, background .16s ease, border-color .16s ease; }
+/* The chip is the remove control, so it has to read as one on hover. */
+.file-chip:hover, .file-chip:focus-visible { border-color: #e6bcbc; color: #b6475f; background: #fdf1f1; }
 .role-segment { display: inline-flex; flex: 0 0 auto; padding: 3px; border-radius: 11px; background: #f3eeea; }
 .role-segment-button { min-width: 72px; height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #756d68; font-size: 11px; font-weight: 800; cursor: pointer; transition: color .18s ease, background .18s ease, box-shadow .18s ease; }
 .role-segment-button:hover { color: var(--violet-dark); }
@@ -226,10 +230,16 @@ button { color: inherit; }
 .file-error { width: min(100%, 1040px); margin: 8px auto 0; color: #b6475f; font-size: 11px; }
 
 .capture-review, .intake-questions { width: min(100%, 1040px); box-sizing: border-box; margin: 14px auto 0; padding: 16px; border: 1px solid #e4d8cd; border-radius: 16px; background: #fffdfa; }
-.capture-review img { display: block; width: min(100%, 360px); max-height: 280px; margin-bottom: 12px; border-radius: 10px; object-fit: contain; background: #f2ece6; }
+.capture-preview { position: relative; display: inline-block; width: min(100%, 360px); margin-bottom: 12px; }
+.capture-review img { display: block; width: 100%; max-height: 280px; border-radius: 10px; object-fit: contain; background: #f2ece6; }
+.capture-remove { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid rgba(62,42,31,.16); border-radius: 9px; background: rgba(255,255,255,.93); color: #6f5b50; font-size: 17px; line-height: 1; cursor: pointer; box-shadow: 0 4px 12px rgba(62,42,31,.16); transition: color .16s ease, background .16s ease, border-color .16s ease; }
+.capture-remove:hover, .capture-remove:focus-visible { border-color: #e6bcbc; color: #b6475f; background: #fff; }
 .capture-review label, .intake-questions label { display: grid; gap: 7px; color: #3a2a22; font-weight: 650; }
 .capture-review textarea, .intake-questions input { box-sizing: border-box; width: 100%; border: 1px solid #d6c7ba; border-radius: 9px; background: #fff; padding: 10px 12px; color: #241913; font: inherit; }
 .capture-review p { margin: 10px 0 0; color: #6f5b50; font-size: 13px; }
+.capture-notice { margin-top: 10px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #e6c9a8; border-radius: 11px; background: #fdf5ea; }
+.capture-notice p { margin: 0; color: #7a4f22; font-size: 12px; }
+.capture-notice button { flex: 0 0 auto; height: 32px; padding: 0 12px; border: 1px solid #dcc0a2; border-radius: 9px; background: #fff; color: #7a4f22; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
 .intake-questions { display: grid; gap: 13px; }
 .intake-questions h2 { margin: 0; font-size: 17px; }
 .intake-actions { display: flex; justify-content: flex-end; gap: 10px; }
@@ -381,6 +391,46 @@ button { color: inherit; }
   .grounded-badge { display: inline-block; margin-top: 9px; }
   .card-actions { align-items: flex-start; flex-direction: column; }
   .card-actions a { width: 100%; justify-content: center; }
+}
+
+/* The home view is a fixed-height, non-scrolling panel, so its vertical rhythm has
+   to shrink with the viewport. Without this the landing is clipped below roughly
+   730px of viewport height — the height a 1080p screen reports at 125% scaling. */
+@media (min-width: 901px) {
+  .app-shell.is-home .main-content { overflow-y: auto; overscroll-behavior: contain; }
+
+  .app-shell.is-home .home-view {
+    height: 100%;
+    box-sizing: border-box;
+    padding: clamp(8px, 1.9vh, 16px) 0 clamp(10px, 3.2vh, 28px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .app-shell.is-home .hero-medallion {
+    width: clamp(44px, 7.4vh, 64px);
+    height: clamp(44px, 7.4vh, 64px);
+    margin-bottom: clamp(8px, 1.9vh, 16px);
+  }
+
+  .app-shell.is-home .eyebrow { margin-bottom: clamp(6px, 1.4vh, 12px); }
+  .app-shell.is-home .hero h1 { font-size: clamp(26px, min(3vw, 4.9vh), 42px); }
+  .app-shell.is-home .hero-copy { margin-top: clamp(8px, 2.1vh, 18px); }
+  .app-shell.is-home .composer-stack { margin-top: clamp(16px, 6vh, 52px); }
+
+  .app-shell.is-home .composer {
+    min-height: 0;
+    grid-template-rows: auto minmax(86px, auto);
+  }
+
+  .app-shell.is-home .composer textarea {
+    height: clamp(96px, 17.3vh, 150px);
+    min-height: 0;
+  }
+
+  .app-shell.is-home .composer-notices { margin-top: clamp(6px, 1vh, 9px); }
+  .app-shell.is-home .embedding-consent { margin-top: clamp(6px, 1.4vh, 12px); }
 }
 
 @media (min-width: 901px) and (min-height: 1020px) {

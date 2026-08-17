@@ -131,50 +131,117 @@ function CaseComposer({
   onCancelIntake,
 }) {
   const fileInputRef = useRef(null);
+  const captureNoticeRef = useRef(null);
   const [file, setFile] = useState(null);
   const [fileError, setFileError] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [transcript, setTranscript] = useState("");
   const [answers, setAnswers] = useState({});
+  const [dragging, setDragging] = useState(false);
+  const [captureNotice, setCaptureNotice] = useState(false);
+  const [captureConfirmed, setCaptureConfirmed] = useState(false);
   const ready = role && description.trim().length >= 15 && !analyzing;
 
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
-  function handleFile(event) {
-    const nextFile = event.target.files?.[0];
+  // The notice can sit below the fold, where a blocked submit would look like nothing happened.
+  useEffect(() => {
+    if (!captureNotice || !captureNoticeRef.current) return;
+    captureNoticeRef.current.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "nearest",
+    });
+  }, [captureNotice]);
+
+  function acceptFile(nextFile) {
     setFileError("");
-    if (!nextFile) return;
+    if (!nextFile) return false;
     if (!/^image\/(png|jpeg|webp)$/.test(nextFile.type)) {
       setFileError("PNG, JPG, WEBP 이미지만 첨부할 수 있습니다.");
-      event.target.value = "";
-      return;
+      return false;
     }
     if (nextFile.size > 10 * 1024 * 1024) {
       setFileError("이미지 크기는 10MB 이하여야 합니다.");
-      event.target.value = "";
-      return;
+      return false;
     }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setFile(nextFile);
     setPreviewUrl(URL.createObjectURL(nextFile));
+    setCaptureNotice(false);
+    setCaptureConfirmed(false);
+    return true;
+  }
+
+  function handleFile(event) {
+    if (!acceptFile(event.target.files?.[0])) event.target.value = "";
+  }
+
+  // Screenshots usually live on the clipboard, not on disk, so accept Ctrl+V too.
+  function handlePaste(event) {
+    const image = [...(event.clipboardData?.items || [])]
+      .find((item) => item.kind === "file" && item.type.startsWith("image/"));
+    if (!image) return;
+    const pasted = image.getAsFile();
+    if (!pasted) return;
+    event.preventDefault();
+    acceptFile(pasted);
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    setDragging(false);
+    acceptFile([...(event.dataTransfer?.files || [])].find((item) => item.type.startsWith("image/")));
+  }
+
+  function handleDragOver(event) {
+    if (![...(event.dataTransfer?.types || [])].includes("Files")) return;
+    event.preventDefault();
+    setDragging(true);
   }
 
   function removeFile() {
     setFile(null);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl("");
+    // The transcript panel disappears with the capture, so keeping its text would
+    // submit something the user can no longer see or edit.
+    setTranscript("");
+    setCaptureNotice(false);
+    setCaptureConfirmed(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function runSubmit() {
+    onStartIntake(redactSensitiveText([description, transcript].filter(Boolean).join("\n")).text);
   }
 
   function submit(event) {
     event.preventDefault();
     if (!ready) return;
-    onStartIntake(redactSensitiveText([description, transcript].filter(Boolean).join("\n")).text);
+    // The capture never leaves the browser, so an untranscribed one contributes nothing.
+    if (file && !transcript.trim() && !captureConfirmed) {
+      setCaptureNotice(true);
+      return;
+    }
+    runSubmit();
+  }
+
+  function submitWithoutTranscript() {
+    setCaptureConfirmed(true);
+    setCaptureNotice(false);
+    runSubmit();
   }
 
   return (
     <div className="composer-stack">
-      <form className="composer" onSubmit={submit}>
+      <form
+        className={`composer${dragging ? " is-dragging" : ""}`}
+        onSubmit={submit}
+        onPaste={handlePaste}
+        onDragOver={handleDragOver}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+      >
         <textarea
           id="case-description"
           aria-label="사례 설명"
@@ -193,12 +260,12 @@ function CaseComposer({
               onChange={handleFile}
               id="case-image"
             />
-            <label className="attach-button" htmlFor="case-image">
+            <label className="attach-button" htmlFor="case-image" title="캡처를 붙여넣거나(Ctrl+V) 끌어다 놓아도 됩니다">
               <span aria-hidden="true">⌕</span> 대화 캡처 첨부
             </label>
             <RoleSelector value={role} onChange={onRoleChange} />
             {file && (
-              <button className="file-chip" type="button" onClick={removeFile} aria-label={`${file.name} 삭제`}>
+              <button className="file-chip" type="button" onClick={removeFile} aria-label={`${file.name} 삭제`} title="클릭하면 첨부가 삭제됩니다">
                 {file.name} <span aria-hidden="true">×</span>
               </button>
             )}
@@ -218,10 +285,19 @@ function CaseComposer({
       </form>
       {fileError && <p className="file-error" role="alert">{fileError}</p>}
       {file && <section className="capture-review" aria-label="대화 캡처 검토">
-        {previewUrl && <img src={previewUrl} alt="선택한 대화 캡처 미리보기" />}
+        {previewUrl && <div className="capture-preview">
+          <img src={previewUrl} alt="선택한 대화 캡처 미리보기" />
+          <button type="button" className="capture-remove" onClick={removeFile} aria-label="첨부한 캡처 삭제" title="첨부한 캡처 삭제">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>}
         <label htmlFor="capture-transcript">캡처의 필요한 내용을 직접 입력하거나 수정하세요</label>
-        <textarea id="capture-transcript" value={transcript} onChange={(event) => setTranscript(event.target.value.slice(0, 4000))} placeholder="캡처의 필요한 문장을 입력하세요. 이름·연락처는 가려집니다." rows={4} />
-        <p>캡처 이미지는 서버 또는 외부 AI에 전송하지 않습니다.</p>
+        <textarea id="capture-transcript" value={transcript} onChange={(event) => { setTranscript(event.target.value.slice(0, 4000)); setCaptureNotice(false); }} placeholder="캡처의 필요한 문장을 입력하세요. 이름·연락처는 가려집니다." rows={4} />
+        <p>캡처 이미지는 서버 또는 외부 AI에 전송하지 않습니다. 옮겨 적은 문장만 검색에 사용됩니다.</p>
+        {captureNotice && <div className="capture-notice" role="alert" ref={captureNoticeRef}>
+          <p>캡처를 아직 옮겨 적지 않았습니다. 이미지는 읽지 않으므로 지금 검색하면 캡처 내용은 반영되지 않습니다.</p>
+          <button type="button" onClick={submitWithoutTranscript}>캡처 없이 검색</button>
+        </div>}
       </section>}
       {intake.questions.length > 0 && <section className="intake-questions" aria-label="추가 사실 확인">
         <h2>몇 가지만 더 확인할게요</h2>
@@ -463,6 +539,7 @@ function ResultsView({ description, results, coverage, searchFailed, onRetry, on
 
 export function App() {
   const [view, setView] = useState("home");
+  const [caseKey, setCaseKey] = useState(0);
   const [role, setRole] = useState("");
   const [description, setDescription] = useState("");
   const [allowExternalEmbedding, setAllowExternalEmbedding] = useState(false);
@@ -499,6 +576,8 @@ export function App() {
     setRole("");
     setDescription("");
     setAllowExternalEmbedding(false);
+    // Remount the composer so the capture, its transcript and any answers go with it.
+    setCaseKey((key) => key + 1);
     goHome();
   }
 
@@ -569,6 +648,7 @@ export function App() {
           <TopBar view={view} onHome={startNewCase} availableCount={coverage.availableCount} />
           <main className="main-content">
             <HomeView
+              key={caseKey}
               role={role}
               setRole={setRole}
               description={description}

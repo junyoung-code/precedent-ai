@@ -37,6 +37,41 @@ test("keeps the no-fabrication empty state visible", () => {
   assert.match(appSource, /공식 원문 보기/);
 });
 
+test("accepts a capture from the clipboard and from a drop, not just the file picker", () => {
+  assert.match(appSource, /onPaste=\{handlePaste\}/);
+  assert.match(appSource, /onDrop=\{handleDrop\}/);
+  assert.match(appSource, /clipboardData\?\.items/);
+  assert.match(appSource, /dataTransfer\?\.files/);
+  // Every entry point runs the same type and size checks.
+  assert.equal(appSource.match(/acceptFile\(/g).length >= 4, true);
+  assert.equal((appSource.match(/PNG, JPG, WEBP 이미지만 첨부할 수 있습니다/g) || []).length, 1);
+});
+
+test("offers a labelled way to remove an attached capture", () => {
+  // Both the toolbar chip and the preview overlay clear the attachment.
+  assert.equal((appSource.match(/onClick=\{removeFile\}/g) || []).length, 2);
+  assert.match(appSource, /className="capture-remove"/);
+  assert.match(appSource, /aria-label="첨부한 캡처 삭제"/);
+  assert.match(appSource, /aria-label=\{`\$\{file\.name\} 삭제`\}/);
+});
+
+test("does not keep capture text the user can no longer see", () => {
+  // Removing the capture takes its transcript with it.
+  assert.match(appSource, /setPreviewUrl\(""\);\s*\n\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*setTranscript\(""\)/);
+  // Starting a new case remounts the composer instead of clearing fields one by one.
+  assert.match(appSource, /setCaseKey\(\(key\) => key \+ 1\)/);
+  assert.match(appSource, /<HomeView\s*\n\s*key=\{caseKey\}/);
+});
+
+test("stops a submit that would drop an untranscribed capture", () => {
+  assert.match(appSource, /if \(file && !transcript\.trim\(\) && !captureConfirmed\)/);
+  assert.match(appSource, /캡처를 아직 옮겨 적지 않았습니다/);
+  assert.match(appSource, /캡처 없이 검색/);
+  // The warning is reachable: it scrolls into view and can be overridden once.
+  assert.match(appSource, /captureNoticeRef/);
+  assert.match(appSource, /submitWithoutTranscript/);
+});
+
 test("requires explicit external embedding consent and uses the private intake client", () => {
   assert.match(appSource, /OpenAI 임베딩 API로 전송/);
   assert.match(appSource, /allowExternalEmbedding/);

@@ -1,3 +1,5 @@
+import { mapSearchPayload } from "./search-api.js";
+
 async function request(path, options = {}, fetchImpl = fetch) {
   let response;
   try {
@@ -18,8 +20,12 @@ export const answerIntake = ({ sessionId, answers, fetchImpl }) => request(`/api
   method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ answers }),
 }, fetchImpl);
 
-export const completeIntake = ({ sessionId, allowExternalEmbedding, fetchImpl }) => request(`/api/intake/${encodeURIComponent(sessionId)}/complete`, {
-  method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ allowExternalEmbedding, limit: 5 }),
-}, fetchImpl);
+// Completion returns the same body as /api/search, so it needs the same mapping
+// before the result cards read it.
+export const completeIntake = async ({ sessionId, allowExternalEmbedding, fetchImpl }) => mapSearchPayload(
+  await request(`/api/intake/${encodeURIComponent(sessionId)}/complete`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ allowExternalEmbedding, limit: 5 }),
+  }, fetchImpl),
+);
 
 export const cancelIntake = ({ sessionId, fetchImpl }) => request(`/api/intake/${encodeURIComponent(sessionId)}`, { method: "DELETE" }, fetchImpl);
