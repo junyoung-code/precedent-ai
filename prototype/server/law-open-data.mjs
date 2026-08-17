@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
+import { fetchLawText, maskSensitiveUrl } from "./law-http.mjs";
 
 const API_BASE = "https://www.law.go.kr/DRF";
 const OFFICIAL_PAGE = "https://www.law.go.kr/LSW/precInfoP.do";
+
+// OC가 유효해도 요청 헤더가 부족하면 법제처가 돌려주는 거절 문서.
+// 문구가 IP·도메인 등록 문제로 읽혀 승인 상태를 오해하기 쉬우므로 별도 코드로 구분한다.
+const AUTH_REJECTION = /사용자\s*정보\s*검증에\s*실패/;
 
 export class LawOpenDataError extends Error {
   constructor(code, cause) {
@@ -57,11 +62,10 @@ export function parsePrecedentDetail(payload, providerRecordId) {
 }
 
 export class LawOpenDataClient {
-  constructor({ oc, fetchImpl = fetch, timeoutMs = 10_000 } = {}) {
+  constructor({ oc, timeoutMs = 30_000, ...http } = {}) {
     if (!oc) throw new LawOpenDataError("LAW_OPEN_DATA_APPROVAL_REQUIRED");
     this.oc = oc;
-    this.fetchImpl = fetchImpl;
-    this.timeoutMs = timeoutMs;
+    this.http = { timeoutMs, ...http };
   }
 
   async listCandidates({ query, page = 1, display = 20 }) {
@@ -85,12 +89,19 @@ export class LawOpenDataClient {
   async #get(path, parameters) {
     const url = new URL(`${API_BASE}/${path}`);
     url.search = new URLSearchParams({ OC: this.oc, ...parameters });
+
+    let body;
     try {
-      const response = await this.fetchImpl(url, { signal: AbortSignal.timeout(this.timeoutMs) });
-      if (!response.ok) throw new Error(`HTTP_${response.status}`);
-      return await response.json();
+      body = await fetchLawText(url.toString(), this.http);
     } catch (error) {
       throw new LawOpenDataError("LAW_API_UNAVAILABLE", error);
+    }
+
+    if (AUTH_REJECTION.test(body)) throw new LawOpenDataError("LAW_OPEN_DATA_AUTH_REJECTED");
+    try {
+      return JSON.parse(body);
+    } catch (error) {
+      throw new LawOpenDataError(`LAW_RESPONSE_UNPARSABLE:${maskSensitiveUrl(url.pathname)}`, error);
     }
   }
 }
