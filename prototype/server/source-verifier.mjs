@@ -101,15 +101,22 @@ export async function verifyPrecedents({ pool, fetchImpl = fetch, limit = 100 })
     try {
       await connection.query("BEGIN");
       await connection.query("DELETE FROM precedent_paragraphs WHERE precedent_id = $1", [record.id]);
-      for (const [index, body] of paragraphs.entries()) {
+      // The same records go to the paragraph table and to fact extraction, which
+      // anchors every tag to a paragraph id.
+      const paragraphRecords = paragraphs.map((body, index) => ({
+        paragraphId: `p${String(index + 1).padStart(3, "0")}`,
+        ordinal: index + 1,
+        body,
+      }));
+      for (const paragraph of paragraphRecords) {
         await connection.query(
           `INSERT INTO precedent_paragraphs (precedent_id, paragraph_id, ordinal, body)
            VALUES ($1, $2, $3, $4)`,
-          [record.id, `p${String(index + 1).padStart(3, "0")}`, index + 1, body],
+          [record.id, paragraph.paragraphId, paragraph.ordinal, paragraph.body],
         );
       }
       if (technicalVerified) {
-        await upsertPrecedentFactTags({ connection, precedentId: record.id, sourceText: record.source_text });
+        await upsertPrecedentFactTags({ connection, precedentId: record.id, paragraphs: paragraphRecords });
       } else {
         await connection.query("DELETE FROM precedent_fact_tags WHERE precedent_id = $1", [record.id]);
       }
