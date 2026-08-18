@@ -10,6 +10,8 @@ import { SUMMARY_VERSION } from "./precedent-summaries.mjs";
 
 export const MINIMUM_RETRIEVAL_SCORE = 55;
 export const LEXICAL_SCORE_CAP = 0.5;
+export const MAX_QUERY_LENGTH = 4_000;
+export const MAX_EXPRESSION_TERMS = 24;
 
 function searchError(code, message) {
   return Object.assign(new Error(message), { code });
@@ -142,20 +144,32 @@ export function rankHybridCandidates(queryFacts, rows, limit) {
 }
 
 export function normalizeSearchQuery(query, limit = 5) {
-  const tokens = String(query || "")
+  // The composer invites up to 2,000 characters and the intake answers are
+  // appended on top of it, so the bound is generous but still a bound.
+  const text = String(query || "")
     .normalize("NFKC")
-    .split(/\s+/)
-    .map((token) => token.replace(/[^\p{L}\p{N}]+/gu, ""))
-    .filter((token) => token.length >= 2)
-    .slice(0, 12);
+    .replace(/\r/g, "\n")
+    .replace(/[\t ]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, MAX_QUERY_LENGTH);
 
-  if (tokens.length === 0) {
+  // Only the tsquery needs a term budget. Counting distinct terms keeps a word
+  // the writer repeats from spending the budget twice.
+  const terms = [...new Set(
+    text
+      .split(/\s+/)
+      .map((token) => token.replace(/[^\p{L}\p{N}]+/gu, ""))
+      .filter((token) => token.length >= 2),
+  )];
+
+  if (terms.length === 0) {
     throw searchError("SEARCH_QUERY_REQUIRED", "두 글자 이상의 검색어가 필요합니다.");
   }
 
   return {
-    text: tokens.join(" "),
-    expression: [...new Set(tokens)].join(" OR "),
+    text,
+    expression: terms.slice(0, MAX_EXPRESSION_TERMS).join(" OR "),
     limit: Math.min(Math.max(Number(limit) || 5, 1), 5),
   };
 }

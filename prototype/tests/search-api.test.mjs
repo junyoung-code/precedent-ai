@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createSearchApiServer } from "../server/search-api.mjs";
 import {
+  MAX_EXPRESSION_TERMS,
+  MAX_QUERY_LENGTH,
   normalizeSearchQuery,
   rankHybridCandidates,
   rankTaggedCandidates,
   searchPrecedents,
 } from "../server/search-precedents.mjs";
+import { extractFactTags } from "../src/lib/fact-tags.js";
 import { EMBEDDING_DIMENSIONS } from "../server/embedding-client.mjs";
 import { SUMMARY_VERSION } from "../server/precedent-summaries.mjs";
 
@@ -17,6 +20,43 @@ test("normalizes a keyword query and caps result count at five", () => {
     limit: 5,
   });
   assert.throws(() => normalizeSearchQuery("   "), { code: "SEARCH_QUERY_REQUIRED" });
+});
+
+// The composer asks for the situation in time order, so the words that decide
+// whether the case is in scope at all arrive at the end of the description.
+const TIME_ORDERED_DESCRIPTION = [
+  "온라인 게임을 하다가 같은 게임을 하던 상대와 시비가 붙었습니다.",
+  "그 사람이 게임 채팅창으로 부모를 성적으로 비하하는 표현이 담긴 메시지를 여러 차례 보냈고,",
+  "저는 채팅창에서 바로 확인했습니다.",
+].join("\n");
+
+test("keeps the whole description and bounds only the tsquery", () => {
+  const normalized = normalizeSearchQuery(TIME_ORDERED_DESCRIPTION);
+
+  assert.match(normalized.text, /성적으로 비하하는/);
+  assert.match(normalized.text, /여러 차례/);
+  assert.equal(normalized.expression.split(" OR ").length <= MAX_EXPRESSION_TERMS, true);
+  // Sentence breaks survive so the embedding input can still drop outcome sentences.
+  assert.match(normalized.text, /\n/);
+
+  // The API normalizes once at the edge and searchPrecedents normalizes again,
+  // so a second pass must not shorten what the first pass kept.
+  assert.deepEqual(normalizeSearchQuery(normalized.text), normalized);
+});
+
+test("does not rule a long in-scope description out of scope", async () => {
+  const normalized = normalizeSearchQuery(TIME_ORDERED_DESCRIPTION);
+  assert.equal(extractFactTags(normalized.text).issueTags.includes("성적표현"), true);
+
+  const pool = { query: async () => ({ rows: [{ count: "51" }] }) };
+  const result = await searchPrecedents({ pool, query: normalized.text });
+  assert.notEqual(result.scoring.status, "query_out_of_scope");
+});
+
+test("bounds a description longer than the composer allows", () => {
+  const normalized = normalizeSearchQuery(`${"성적인 메시지 ".repeat(2_000)}`);
+  assert.equal(normalized.text.length <= MAX_QUERY_LENGTH, true);
+  assert.equal(normalized.expression.split(" OR ").length <= MAX_EXPRESSION_TERMS, true);
 });
 
 test("returns no results when the query has no sexual expression", async () => {
