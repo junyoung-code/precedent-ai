@@ -49,7 +49,8 @@ test("falls back to GET when an official server rejects HEAD", async () => {
 // A judgment whose facts a reader can name: a bank transfer memo used to carry
 // sexual insults to a stranger, repeatedly, and the recipient read them.
 const SOURCE_TEXT = [
-  "<p>【주    문】 원심판결을 파기하고, 사건을 부산지방법원에 환송한다.</p>",
+  "<p>【주    문】</p>",
+  "<p>원심판결을 파기하고, 사건을 부산지방법원에 환송한다.</p>",
   "<p>【이    유】 상고이유를 판단한다.</p>",
   "<p>피고인은 자기의 성적 욕망을 유발할 목적으로, 모르는 피해자의 은행계좌로 1원씩 여러 차례 입금하면서 송금메모란에 성적인 욕설과 피해자의 신체를 비하하는 메시지를 각 전송하였다.</p>",
   "<p>피해자는 은행 거래내역에서 위 메시지를 그대로 확인하였다.</p>",
@@ -129,6 +130,15 @@ test("re-verification re-derives fact tags instead of blanking them", async () =
   for (const paragraphId of evidence.paragraphIds) {
     assert.equal(stored.includes(paragraphId), true, `unknown paragraph id: ${paragraphId}`);
   }
+
+  // The court's own order rides along on the same pass over the paragraphs.
+  const order = statements.find((item) => /INSERT INTO precedent_dispositions/.test(item.sql));
+  assert.ok(order, "verification must record the court's order");
+  assert.equal(order.params[2], "원심판결을 파기하고, 사건을 부산지방법원에 환송한다.");
+  assert.equal(order.params[4], "remand");
+  for (const paragraphId of order.params[3]) {
+    assert.equal(stored.includes(paragraphId), true, `unknown paragraph id: ${paragraphId}`);
+  }
 });
 
 test("drops fact tags when a record no longer verifies", async () => {
@@ -154,4 +164,6 @@ test("drops fact tags when a record no longer verifies", async () => {
   assert.equal(summary.searchable, 0);
   assert.equal(statements.some((item) => /DELETE FROM precedent_fact_tags/.test(item.sql)), true);
   assert.equal(statements.some((item) => /INSERT INTO precedent_fact_tags/.test(item.sql)), false);
+  assert.equal(statements.some((item) => /DELETE FROM precedent_dispositions/.test(item.sql)), true);
+  assert.equal(statements.some((item) => /INSERT INTO precedent_dispositions/.test(item.sql)), false);
 });

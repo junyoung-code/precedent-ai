@@ -98,6 +98,26 @@ function mapSummary(value) {
   return summary;
 }
 
+const DISPOSITION_KINDS = new Set([
+  "remand",
+  "final_appeal_dismissed",
+  "appeal_dismissed",
+  "acquitted",
+  "sentenced",
+  "reversed_and_sentenced",
+  "multiple",
+  "civil",
+  "other",
+]);
+
+// The order the court actually made in this precedent. It is shown as a quote,
+// so an unrecognised label drops the whole block rather than guessing at it.
+function mapDisposition(value) {
+  const orderText = typeof value?.orderText === "string" ? value.orderText.trim() : "";
+  if (!orderText || !DISPOSITION_KINDS.has(value?.kind)) return null;
+  return { orderText, kind: value.kind };
+}
+
 function mapResult(result) {
   if (!isVerifiedIdentity(result)) return null;
   return {
@@ -122,6 +142,7 @@ function mapResult(result) {
     similarities: (result.matchedFacts || []).map(matchedFactLabel).filter(Boolean).slice(0, 4),
     differences: (result.differentFacts || []).map(differentFactLabel).filter(Boolean).slice(0, 4),
     summary: mapSummary(result.summary),
+    disposition: mapDisposition(result.disposition),
   };
 }
 

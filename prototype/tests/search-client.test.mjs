@@ -122,6 +122,33 @@ test("passes through why a precedent carries no summary", async () => {
   assert.equal(unknown.results[0].focus, "focused");
 });
 
+test("passes through the court's order and drops one it cannot label", async () => {
+  const fetchImpl = async (_path, options) => new Response(JSON.stringify({
+    results: [{ ...VALID_RESULT, disposition: JSON.parse(options.body).query }],
+  }), { status: 200 });
+
+  const kept = await searchSimilarPrecedents({
+    query: { orderText: "  원심판결을 파기하고, 사건을 부산지방법원에 환송한다.  ", kind: "remand" },
+    fetchImpl,
+  });
+  assert.deepEqual(kept.results[0].disposition, {
+    orderText: "원심판결을 파기하고, 사건을 부산지방법원에 환송한다.",
+    kind: "remand",
+  });
+
+  // An order shown as a quote cannot be guessed at: anything unrecognised or
+  // empty drops the whole block rather than appearing without its meaning.
+  for (const disposition of [
+    { orderText: "상고를 기각한다.", kind: "made_up_kind" },
+    { orderText: "   ", kind: "remand" },
+    { kind: "remand" },
+    null,
+  ]) {
+    const dropped = await searchSimilarPrecedents({ query: disposition, fetchImpl });
+    assert.equal(dropped.results[0].disposition, null, JSON.stringify(disposition));
+  }
+});
+
 test("uses a stable error code when the search server is unavailable", async () => {
   const fetchImpl = async () => ({ ok: false, status: 500 });
   await assert.rejects(

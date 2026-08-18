@@ -54,6 +54,28 @@ test("explains a card that carries no summary instead of leaving a gap", () => {
   }
 });
 
+test("shows what the court ordered in the precedent, quoted and labelled", () => {
+  assert.match(appSource, /이 판례의 결론/);
+  assert.match(appSource, /className="disposition-order">\{result\.disposition\.orderText\}/);
+  assert.match(appSource, /DISPOSITION_MEANING\[result\.disposition\.kind\] \|\| DISPOSITION_MEANING\.other/);
+  // A mixed-offence precedent already withholds its summary for the same reason;
+  // its order is not this offence's conclusion either.
+  assert.match(appSource, /result\.focus !== "focused" && .{0,40}DISPOSITION_SCOPE_CAVEAT/);
+  assert.match(appSource, /위 주문이 통신매체이용음란 부분만의 결론은 아닙니다/);
+});
+
+test("keeps the precedent's order from reading as a prediction about the user", () => {
+  assert.match(appSource, /회원님 사건의 결과를 예측한 것이 아닙니다/);
+  // An order carrying several decisions is never reduced to one of them.
+  assert.match(appSource, /multiple: "하나의 주문에 여러 갈래의 판단이 함께 담겨 있습니다/);
+  // Remand and first-instance sentences are the two that read as final but are not.
+  assert.match(appSource, /remand: "[^"]*결론이 확정된 것은 아닙니다/);
+  assert.match(appSource, /sentenced: "[^"]*상급심에서 달라질 수 있습니다/);
+  for (const banned of ["성립 확률", "고소 확률", "유죄 확률", "무죄 가능성", "처벌 예상", "예상 형량"]) {
+    assert.equal(appSource.includes(banned), false, `banned UI copy: ${banned}`);
+  }
+});
+
 test("retries a failed search with a new session instead of the deleted one", () => {
   assert.match(appSource, /onRetry=\{retrySearch\}/);
   // Retry rebuilds a session from what the browser still holds.

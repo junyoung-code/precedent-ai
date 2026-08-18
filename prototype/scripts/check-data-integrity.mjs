@@ -11,6 +11,12 @@ try {
         WHERE extraction_version = 'rule-v2') AS "factTagsV2",
        (SELECT count(*) FROM precedent_summaries
         WHERE summary_version = 'grounded-v2') AS "summariesV2",
+       (SELECT count(*) FROM precedent_dispositions
+        WHERE extraction_version = 'order-v1') AS "dispositionsV1",
+       (SELECT count(*) FROM precedents p
+        WHERE p.searchable = true
+          AND NOT EXISTS (SELECT 1 FROM precedent_dispositions d WHERE d.precedent_id = p.id)
+       ) AS "searchableWithoutOrder",
        (SELECT count(*) FROM precedent_summaries s
         JOIN precedents p ON p.id = s.precedent_id
         WHERE s.source_hash <> p.source_hash) AS "staleHashes",

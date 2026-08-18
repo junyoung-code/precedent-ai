@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { upsertPrecedentDisposition } from "./precedent-disposition.mjs";
 import { upsertPrecedentFactTags } from "./precedent-fact-tags.mjs";
 
 export const ALLOWED_OFFICIAL_HOSTS = new Set([
@@ -117,8 +118,10 @@ export async function verifyPrecedents({ pool, fetchImpl = fetch, limit = 100 })
       }
       if (technicalVerified) {
         await upsertPrecedentFactTags({ connection, precedentId: record.id, paragraphs: paragraphRecords });
+        await upsertPrecedentDisposition({ connection, precedentId: record.id, paragraphs: paragraphRecords });
       } else {
         await connection.query("DELETE FROM precedent_fact_tags WHERE precedent_id = $1", [record.id]);
+        await connection.query("DELETE FROM precedent_dispositions WHERE precedent_id = $1", [record.id]);
       }
       await connection.query(
         `UPDATE precedents SET

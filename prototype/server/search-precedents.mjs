@@ -8,6 +8,18 @@ import {
 } from "./precedent-scope.mjs";
 import { SUMMARY_VERSION } from "./precedent-summaries.mjs";
 
+export const DISPOSITION_KINDS = new Set([
+  "remand",
+  "final_appeal_dismissed",
+  "appeal_dismissed",
+  "acquitted",
+  "sentenced",
+  "reversed_and_sentenced",
+  "multiple",
+  "civil",
+  "other",
+]);
+
 export const MINIMUM_RETRIEVAL_SCORE = 55;
 export const LEXICAL_SCORE_CAP = 0.5;
 export const MAX_QUERY_LENGTH = 4_000;
@@ -62,9 +74,24 @@ function publicStoredSummary(row) {
   return summary;
 }
 
+// What the court ordered in this precedent, quoted from its own judgment. It is
+// a record of that case, not a reading of the user's case, so it travels
+// alongside the summary rather than inside it.
+function publicDisposition(row) {
+  const orderText = typeof row.dispositionOrderText === "string" ? row.dispositionOrderText.trim() : "";
+  if (!orderText || !DISPOSITION_KINDS.has(row.dispositionKind)) return null;
+  return { orderText, kind: row.dispositionKind };
+}
+
 function publicRow(row) {
-  const { summarySentences: _summarySentences, summaryVersion: _summaryVersion, ...safe } = row;
-  return { ...safe, summary: publicStoredSummary(row) };
+  const {
+    summarySentences: _summarySentences,
+    summaryVersion: _summaryVersion,
+    dispositionOrderText: _dispositionOrderText,
+    dispositionKind: _dispositionKind,
+    ...safe
+  } = row;
+  return { ...safe, summary: publicStoredSummary(row), disposition: publicDisposition(row) };
 }
 
 function lexicalScore(value) {
@@ -204,9 +231,12 @@ async function searchWithoutEmbeddings({ pool, normalized, queryFacts, fallbackC
          COALESCE(f.additional_channels, '{}') AS "additionalChannels",
          COALESCE(f.issue_tags, '{}') AS "issueTags",
          s.summary_version AS "summaryVersion",
-         s.sentences AS "summarySentences"
+         s.sentences AS "summarySentences",
+         d.order_text AS "dispositionOrderText",
+         d.kind AS "dispositionKind"
        FROM precedents p
        LEFT JOIN precedent_fact_tags f ON f.precedent_id = p.id
+       LEFT JOIN precedent_dispositions d ON d.precedent_id = p.id
        LEFT JOIN precedent_summaries s
          ON s.precedent_id = p.id
         AND s.source_hash = p.source_hash
@@ -333,9 +363,12 @@ export async function searchPrecedents({ pool, query, limit = 5, embeddingClient
          COALESCE(f.additional_channels, '{}') AS "additionalChannels",
          COALESCE(f.issue_tags, '{}') AS "issueTags",
          s.summary_version AS "summaryVersion",
-         s.sentences AS "summarySentences"
+         s.sentences AS "summarySentences",
+         d.order_text AS "dispositionOrderText",
+         d.kind AS "dispositionKind"
        FROM precedents p
        LEFT JOIN precedent_fact_tags f ON f.precedent_id = p.id
+       LEFT JOIN precedent_dispositions d ON d.precedent_id = p.id
        LEFT JOIN precedent_summaries s
          ON s.precedent_id = p.id
         AND s.source_hash = p.source_hash

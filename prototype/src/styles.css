@@ -329,6 +329,12 @@ button { color: inherit; }
 .summary-list p { margin: 0; color: #4f515c; font-size: 11px; line-height: 1.6; }
 .summary-list span { display: inline-block; margin-top: 4px; color: #8c684f; font-size: 9px; font-weight: 700; }
 .source-reminder { margin: 13px 0 0; padding-top: 11px; border-top: 1px solid #ebe6f3; color: #89838f; font-size: 9px; }
+/* Kept visually apart from the similarity score: a score beside a verdict reads
+   as a prediction even when each half is a fact. */
+.disposition-box { margin-top: 12px; padding: 17px; border: 1px solid #e2e4ee; border-radius: 14px; background: #f7f8fc; }
+.disposition-box h4 { margin: 0; font-size: 12px; color: #3f4252; }
+.disposition-order { margin: 10px 0 0; padding-left: 12px; border-left: 2px solid #9aa0bd; color: #3f4252; font-size: 12px; line-height: 1.65; }
+.disposition-meaning { margin: 9px 0 0; color: #5e6273; font-size: 11px; line-height: 1.6; }
 .card-actions { margin-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #91939d; font-size: 9px; }
 .card-actions a { height: 36px; padding: 0 12px; display: inline-flex; align-items: center; gap: 8px; border-radius: 9px; background: #4f3020; color: white; font-size: 11px; font-weight: 800; text-decoration: none; }
 .show-more { width: 100%; height: 47px; border: 1px solid #dfdfe6; border-radius: 12px; background: white; font-size: 12px; font-weight: 700; cursor: pointer; }

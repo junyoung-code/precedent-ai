@@ -8,6 +8,7 @@ const factTagSql = await readFile(new URL("../db/migrations/004_fact_tags.sql", 
 const embeddingSql = await readFile(new URL("../db/migrations/005_embeddings.sql", import.meta.url), "utf8");
 const summarySql = await readFile(new URL("../db/migrations/006_grounded_summaries.sql", import.meta.url), "utf8");
 const intakeSql = await readFile(new URL("../db/migrations/007_intake_sessions.sql", import.meta.url), "utf8");
+const dispositionSql = await readFile(new URL("../db/migrations/008_dispositions.sql", import.meta.url), "utf8");
 
 test("keeps imported precedents unsearchable until verification and link checks pass", () => {
   assert.match(sql, /searchable boolean NOT NULL DEFAULT false/);
@@ -55,6 +56,17 @@ test("stores only versioned grounded summaries for a canonical precedent", () =>
   assert.match(summarySql, /sentences jsonb NOT NULL/);
   assert.match(summarySql, /jsonb_typeof\(sentences\) = 'array'/);
   assert.doesNotMatch(summarySql, /user_query|user_role|complaint_probability/i);
+});
+
+test("stores the court's own order as quoted text with a closed set of labels", () => {
+  assert.match(dispositionSql, /CREATE TABLE IF NOT EXISTS precedent_dispositions/);
+  assert.match(dispositionSql, /precedent_id uuid PRIMARY KEY REFERENCES precedents\(id\) ON DELETE CASCADE/);
+  assert.match(dispositionSql, /order_text text NOT NULL CHECK \(length\(btrim\(order_text\)\) > 0\)/);
+  assert.match(dispositionSql, /paragraph_ids text\[\] NOT NULL CHECK \(cardinality\(paragraph_ids\) > 0\)/);
+  assert.match(dispositionSql, /kind text NOT NULL CHECK \(kind IN \(/);
+  // The table records one precedent's own order. It must not gain a field that
+  // could hold a reading of the user's case.
+  assert.doesNotMatch(dispositionSql, /user_query|user_role|probability|prediction/i);
 });
 
 test("stores only redacted short-lived intake session fields", () => {

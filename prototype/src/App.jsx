@@ -96,7 +96,7 @@ function TopBar({ view, onHome, availableCount }) {
 function RoleSelector({ value, onChange }) {
   const roles = [
     { value: "victim", label: "피해자" },
-    { value: "reported", label: "피신고인" },
+    { value: "reported", label: "피신고인(피의자)" },
   ];
 
   return (
@@ -386,6 +386,25 @@ const SUMMARY_ABSENCE_REASON = {
   focused: "이 판례는 아직 요약이 준비되지 않았습니다. 공식 원문을 확인하세요.",
 };
 
+// What a court order means in plain words. The order itself is quoted above the
+// line, so this only names the kind of decision — the part a reader outside the
+// profession cannot tell apart. An order carrying several decisions at once is
+// not summarised into one; the reader is sent back to the quote.
+const DISPOSITION_MEANING = {
+  remand: "상급 법원이 앞선 판단을 그대로 두기 어렵다고 보아, 사건을 다시 재판하도록 돌려보냈습니다. 이 시점에 결론이 확정된 것은 아닙니다.",
+  final_appeal_dismissed: "상고가 받아들여지지 않아 앞선 판단이 그대로 확정됐습니다.",
+  appeal_dismissed: "항소가 받아들여지지 않아 앞선 판단이 그대로 유지됐습니다.",
+  acquitted: "법원은 무죄로 판단했습니다.",
+  sentenced: "법원이 유죄로 보아 위와 같은 형을 정했습니다. 상급심에서 달라질 수 있습니다.",
+  reversed_and_sentenced: "앞선 판결을 파기하고 위와 같이 형을 다시 정했습니다.",
+  multiple: "하나의 주문에 여러 갈래의 판단이 함께 담겨 있습니다. 위 원문을 그대로 확인하세요.",
+  civil: "형사 판결이 아니라, 손해배상 등 금전 지급을 정한 민사 판결입니다.",
+  other: "위 주문 원문을 그대로 확인하세요.",
+};
+
+// The same reason a mixed precedent carries no summary applies to its order.
+const DISPOSITION_SCOPE_CAVEAT = "이 판례는 다른 죄명도 함께 판단되어, 위 주문이 통신매체이용음란 부분만의 결론은 아닙니다.";
+
 function PrecedentCard({ result, rank }) {
   return (
     <article className="precedent-card">
@@ -444,6 +463,18 @@ function PrecedentCard({ result, rank }) {
 
       {!result.summary?.length && (
         <p className="summary-absent">{SUMMARY_ABSENCE_REASON[result.focus] || SUMMARY_ABSENCE_REASON.focused}</p>
+      )}
+
+      {result.disposition && (
+        <section className="disposition-box" aria-labelledby={`disposition-${result.id}`}>
+          <h4 id={`disposition-${result.id}`}>이 판례의 결론</h4>
+          <blockquote className="disposition-order">{result.disposition.orderText}</blockquote>
+          <p className="disposition-meaning">
+            {DISPOSITION_MEANING[result.disposition.kind] || DISPOSITION_MEANING.other}
+          </p>
+          {result.focus !== "focused" && <p className="disposition-meaning">{DISPOSITION_SCOPE_CAVEAT}</p>}
+          <p className="source-reminder">판결문 주문을 그대로 옮긴 것이며, 회원님 사건의 결과를 예측한 것이 아닙니다.</p>
+        </section>
       )}
 
       <div className="card-actions">
