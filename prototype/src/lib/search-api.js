@@ -169,7 +169,7 @@ export function mapSearchPayload(payload, fallbackQuery = "") {
 export async function searchSimilarPrecedents({
   query,
   limit = 3,
-  allowExternalEmbedding = false,
+  allowExternalAi = false,
   fetchImpl = fetch,
   signal,
 } = {}) {
@@ -181,7 +181,7 @@ export async function searchSimilarPrecedents({
       body: JSON.stringify({
         query,
         limit,
-        allowExternalEmbedding: allowExternalEmbedding === true,
+        allowExternalAi: allowExternalAi === true,
       }),
       signal,
     });

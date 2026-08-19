@@ -22,9 +22,9 @@ export const answerIntake = ({ sessionId, answers, fetchImpl }) => request(`/api
 
 // Completion returns the same body as /api/search, so it needs the same mapping
 // before the result cards read it.
-export const completeIntake = async ({ sessionId, allowExternalEmbedding, fetchImpl }) => mapSearchPayload(
+export const completeIntake = async ({ sessionId, allowExternalAi, fetchImpl }) => mapSearchPayload(
   await request(`/api/intake/${encodeURIComponent(sessionId)}/complete`, {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ allowExternalEmbedding, limit: 5 }),
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ allowExternalAi, limit: 5 }),
   }, fetchImpl),
 );
 

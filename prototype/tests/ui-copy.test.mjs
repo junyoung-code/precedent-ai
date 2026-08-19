@@ -129,9 +129,12 @@ test("stops a submit that would drop an untranscribed capture", () => {
   assert.match(appSource, /submitWithoutTranscript/);
 });
 
-test("requires explicit external embedding consent and uses the private intake client", () => {
-  assert.match(appSource, /OpenAI 임베딩 API로 전송/);
-  assert.match(appSource, /allowExternalEmbedding/);
+test("requires explicit external AI consent and uses the private intake client", () => {
+  // One checkbox now covers every external call, so its wording has to name all
+  // of them — a consent narrower than what is sent is not consent.
+  assert.match(appSource, /OpenAI API로 전송해 의미 검색과 법조문 분석에 사용합니다/);
+  assert.match(appSource, /AI 분석은 실행하지 않습니다/);
+  assert.match(appSource, /allowExternalAi/);
   assert.match(appSource, /createIntake/);
   assert.match(appSource, /completeIntake/);
   assert.match(appSource, /캡처 이미지는 서버 또는 외부 AI에 전송하지 않습니다/);

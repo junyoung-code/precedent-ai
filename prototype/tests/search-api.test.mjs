@@ -440,15 +440,143 @@ test("POST /api/search passes the embedding client only after explicit request c
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const { port } = server.address();
 
-  for (const allowExternalEmbedding of [false, true]) {
+  for (const allowExternalAi of [false, true]) {
     const response = await fetch(`http://127.0.0.1:${port}/api/search`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query: "게임 채팅", allowExternalEmbedding }),
+      body: JSON.stringify({ query: "게임 채팅", allowExternalAi }),
     });
     assert.equal(response.status, 200);
   }
 
   assert.equal(receivedClients[0], null);
   assert.equal(receivedClients[1], embeddingClient);
+});
+
+const STATUTE_ROW = {
+  lawId: "011187", articleNo: "13",
+  lawName: "성폭력범죄의 처벌 등에 관한 특례법",
+  articleTitle: "통신매체를 이용한 음란행위",
+  body: "제13조(통신매체를 이용한 음란행위) 자기 또는 다른 사람의 성적 욕망을 …",
+  enforcedOn: "2025-10-01",
+  officialUrl: "https://www.law.go.kr/법령/성폭력범죄의처벌등에관한특례법/제13조",
+};
+
+function analysisServer({ analysisClient, statute = STATUTE_ROW }) {
+  const pool = { query: async () => ({ rows: statute ? [statute] : [] }) };
+  return createSearchApiServer({ pool, analysisClient });
+}
+
+async function postAnalysis(port, body) {
+  const response = await fetch(`http://127.0.0.1:${port}/api/analysis`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return { status: response.status, body: await response.json() };
+}
+
+test("POST /api/analysis calls no model until consent is given", async (t) => {
+  let calls = 0;
+  const analysisClient = {
+    analyze: async () => {
+      calls += 1;
+      return { analysis: { overview: ["설명"], elementNotes: [], precedentNotes: [], nextSteps: [] } };
+    },
+  };
+  const server = analysisServer({ analysisClient });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const { port } = server.address();
+
+  const declined = await postAnalysis(port, { redactedText: "게임 채팅으로 성적인 욕설", allowExternalAi: false });
+  assert.equal(declined.status, 200);
+  assert.equal(declined.body.unavailable, "ANALYSIS_DISABLED");
+  assert.equal(declined.body.analysis, null);
+  assert.equal(calls, 0);
+
+  const consented = await postAnalysis(port, { redactedText: "게임 채팅으로 성적인 욕설", allowExternalAi: true });
+  assert.equal(consented.body.unavailable, null);
+  assert.deepEqual(consented.body.analysis.overview, ["설명"]);
+  assert.equal(calls, 1);
+});
+
+test("POST /api/analysis decides the elements itself and quotes the statute", async (t) => {
+  let received;
+  const analysisClient = {
+    analyze: async (input) => {
+      received = input;
+      // A model that tries to overturn a verdict must not be able to.
+      return { analysis: { overview: [], elementNotes: [{ id: "purpose", text: "목적은 여러 사정으로 판단합니다." }], precedentNotes: [], nextSteps: [] } };
+    },
+  };
+  const server = analysisServer({ analysisClient });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const { port } = server.address();
+
+  const result = await postAnalysis(port, {
+    redactedText: "게임 채팅창으로 성적으로 비하하는 메시지를 받았고 바로 확인했습니다.",
+    allowExternalAi: true,
+  });
+
+  assert.deepEqual(
+    result.body.elements.map((item) => [item.id, item.mention]),
+    [["purpose", "unclear"], ["medium", "present"], ["expression", "present"], ["reached", "present"]],
+  );
+  assert.equal(result.body.statute.body, STATUTE_ROW.body);
+  assert.equal(result.body.statute.officialUrl, STATUTE_ROW.officialUrl);
+  // The model is handed the verdicts rather than asked for them.
+  assert.deepEqual(received.elements.map((item) => item.mention), ["unclear", "present", "present", "present"]);
+});
+
+test("POST /api/analysis drops a citation the search did not return", async (t) => {
+  const analysisClient = {
+    analyze: async () => ({
+      analysis: {
+        overview: [],
+        elementNotes: [],
+        precedentNotes: [
+          { caseNumber: "2023도7199", text: "이 판례의 주문은 파기환송입니다." },
+          { caseNumber: "2099도1", text: "지어낸 판례입니다." },
+        ],
+        nextSteps: [],
+      },
+    }),
+  };
+  const server = analysisServer({ analysisClient });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const { port } = server.address();
+
+  const result = await postAnalysis(port, {
+    redactedText: "게임 채팅으로 성적인 욕설을 받았습니다.",
+    allowExternalAi: true,
+    precedents: [{ caseNumber: "2023도7199", court: "대법원", caseName: "통신매체이용음란" }],
+  });
+
+  assert.deepEqual(result.body.analysis.precedentNotes.map((item) => item.caseNumber), ["2023도7199"]);
+});
+
+test("POST /api/analysis reports why it has nothing instead of failing the page", async (t) => {
+  const cases = [
+    [{ analyze: async () => { throw Object.assign(new Error("down"), { code: "ANALYSIS_API_UNAVAILABLE" }); } }, STATUTE_ROW, "ANALYSIS_API_UNAVAILABLE"],
+    [{ analyze: async () => ({ analysis: {} }) }, null, "STATUTE_MISSING"],
+  ];
+  for (const [analysisClient, statute, expected] of cases) {
+    const server = analysisServer({ analysisClient, statute });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    const result = await postAnalysis(port, { redactedText: "게임 채팅", allowExternalAi: true });
+    assert.equal(result.status, 200, expected);
+    assert.equal(result.body.unavailable, expected);
+    await new Promise((resolve) => server.close(resolve));
+  }
+
+  const server = analysisServer({ analysisClient: { analyze: async () => ({ analysis: {} }) } });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const empty = await postAnalysis(server.address().port, { redactedText: "  ", allowExternalAi: true });
+  assert.equal(empty.status, 400);
+  assert.equal(empty.body.error, "INTAKE_INPUT_REQUIRED");
 });

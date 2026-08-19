@@ -499,3 +499,42 @@ button { color: inherit; }
   .precedent-card { break-inside: avoid; box-shadow: none; }
   .ai-summary-badge, .source-reminder { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* The AI layer. Held visually apart from the verified cards above it: those are
+   records with official links, this is generated text about the statute. */
+.analysis-section { width: 100%; margin-top: 26px; }
+.analysis-divider { position: relative; margin: 0 0 18px; text-align: center; }
+.analysis-divider::before { content: ""; position: absolute; inset: 50% 0 auto; height: 1px; background: repeating-linear-gradient(to right, #d8d9e4 0 6px, transparent 6px 12px); }
+.analysis-divider span { position: relative; padding: 0 14px; background: #fafafd; color: #8b8d99; font-size: 10px; font-weight: 700; }
+.analysis-status { margin: 0; padding: 18px; border: 1px dashed #d9dae6; border-radius: 14px; background: #f7f8fc; color: #6f7280; font-size: 12px; text-align: center; }
+.analysis-card { margin-top: 12px; padding: 20px; border: 1px solid #e2e4ee; border-radius: 16px; background: #f7f8fc; }
+.analysis-card h2 { margin: 0; font-size: 16px; color: #33364a; }
+.analysis-card h3 { margin: 0 0 10px; font-size: 13px; color: #33364a; }
+.analysis-card p { margin: 0 0 8px; color: #4f5262; font-size: 12px; line-height: 1.7; }
+.statute-body { margin: 12px 0 0; padding: 13px 15px; border-left: 3px solid #8b90b4; border-radius: 0 10px 10px 0; background: #fff; color: #33364a; font-size: 12px; line-height: 1.75; }
+.statute-source { margin: 8px 0 0 !important; color: #7b7e8d; font-size: 10px; }
+.statute-source a { color: #4f3020; font-weight: 700; }
+.element-list { margin: 16px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.element-item { padding: 13px 15px; border: 1px solid #e6e8f1; border-radius: 12px; background: #fff; }
+.element-item.is-present { border-left: 3px solid #4a8f6d; }
+.element-item.is-absent { border-left: 3px solid #b06a4f; }
+.element-item.is-unclear { border-left: 3px solid #b9bccd; }
+.element-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.element-head strong { color: #2f3244; font-size: 12px; }
+.element-mention { flex: 0 0 auto; padding: 3px 8px; border-radius: 999px; font-size: 9px; font-weight: 800; }
+.element-mention.is-present { background: #e6f2ec; color: #2f6b50; }
+.element-mention.is-absent { background: #f6e9e3; color: #8a4d33; }
+.element-mention.is-unclear { background: #eceef5; color: #6a6d7e; }
+.element-quote { margin: 8px 0 0 !important; color: #6a6d7e; font-size: 11px; font-style: italic; }
+.element-evidence { margin: 5px 0 0 !important; color: #4f5262; font-size: 11px; }
+.element-note { margin: 7px 0 0 !important; padding-top: 7px; border-top: 1px solid #eef0f6; color: #5e6273; font-size: 11px; }
+.analysis-caution { margin: 14px 0 0 !important; padding: 11px 13px; border-radius: 10px; background: #eceef5; color: #4a4d5e !important; font-size: 11px !important; }
+.analysis-precedent-notes { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.analysis-precedent-notes li { padding-left: 11px; border-left: 2px solid #b6bad2; color: #4f5262; font-size: 11px; line-height: 1.65; }
+.analysis-case { display: inline-block; margin-right: 5px; color: #4f3020; font-weight: 800; font-size: 10px; }
+.next-steps { margin: 0; padding-left: 17px; display: grid; gap: 7px; color: #4f5262; font-size: 12px; line-height: 1.65; }
+
+@media (max-width: 620px) {
+  .analysis-card { padding: 15px; }
+  .element-head { flex-direction: column; gap: 5px; }
+}

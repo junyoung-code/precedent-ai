@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { extractCaseFacts } from "./lib/search.js";
 import { redactSensitiveText } from "./lib/privacy-redaction.js";
 import { abandonIntake, answerIntake, cancelIntake, completeIntake, createIntake } from "./lib/intake-api.js";
+import { analyseCase } from "./lib/analysis-api.js";
 
 const FACT_LABELS = {
   medium: {
@@ -123,8 +124,8 @@ function CaseComposer({
   onDescriptionChange,
   onSubmit,
   analyzing,
-  allowExternalEmbedding,
-  onExternalEmbeddingChange,
+  allowExternalAi,
+  onExternalAiChange,
   intake,
   onStartIntake,
   onSubmitAnswers,
@@ -310,13 +311,13 @@ function CaseComposer({
       <label className="embedding-consent">
         <input
           type="checkbox"
-          checked={allowExternalEmbedding}
-          onChange={(event) => onExternalEmbeddingChange(event.target.checked)}
+          checked={allowExternalAi}
+          onChange={(event) => onExternalAiChange(event.target.checked)}
         />
         <span>
-          <strong>의미 검색 사용</strong>
-          입력 문장을 OpenAI 임베딩 API로 전송해 의미 검색을 사용합니다.
-          <small>동의하지 않으면 키워드·사실 태그 검색을 사용합니다. 입력은 서비스 DB에 저장하지 않습니다.</small>
+          <strong>AI 분석 사용</strong>
+          가려진 입력 문장을 OpenAI API로 전송해 의미 검색과 법조문 분석에 사용합니다.
+          <small>동의하지 않으면 키워드·사실 태그 검색만 사용하고 AI 분석은 실행하지 않습니다. 입력은 서비스 DB에 저장하지 않습니다.</small>
         </span>
       </label>
       <div className="composer-notices" aria-label="서비스 안내">
@@ -334,7 +335,7 @@ function HomeView({
   setDescription,
   onSubmit,
   analyzing,
-  allowExternalEmbedding,
+  allowExternalAi,
   setAllowExternalEmbedding,
   intake,
   onStartIntake,
@@ -359,8 +360,8 @@ function HomeView({
         onDescriptionChange={setDescription}
         onSubmit={onSubmit}
         analyzing={analyzing}
-        allowExternalEmbedding={allowExternalEmbedding}
-        onExternalEmbeddingChange={setAllowExternalEmbedding}
+        allowExternalAi={allowExternalAi}
+        onExternalAiChange={setAllowExternalEmbedding}
         intake={intake}
         onStartIntake={onStartIntake}
         onSubmitAnswers={onSubmitAnswers}
@@ -532,7 +533,100 @@ function ErrorResults({ onRetry }) {
   );
 }
 
-function ResultsView({ description, results, coverage, searchFailed, onRetry, onHome, resultsStartRef }) {
+const MENTION_LABEL = {
+  present: "입력에 언급됨",
+  absent: "아니라고 적음",
+  unclear: "입력만으로는 확인 안 됨",
+};
+
+const ANALYSIS_ABSENCE_REASON = {
+  ANALYSIS_DISABLED: "AI 분석에 동의하지 않으셨습니다. 입력 화면에서 'AI 분석 사용'을 체크하면 법조문 정리를 볼 수 있습니다.",
+  STATUTE_MISSING: "법조문을 아직 내려받지 못했습니다.",
+  ANALYSIS_API_UNAVAILABLE: "AI 분석 서버에 연결하지 못했습니다. 위 판례 결과는 그대로 유효합니다.",
+  ANALYSIS_RESPONSE_INVALID: "AI 분석 응답을 확인하지 못했습니다. 위 판례 결과는 그대로 유효합니다.",
+};
+
+/**
+ * The statute reading, kept below the verified cards and visibly apart from
+ * them. The cards are records; this is generated text about what the article
+ * asks for, and the two must not be mistaken for one another.
+ */
+function StatuteAnalysis({ state }) {
+  const { loading, statute, elements, analysis, unavailable } = state;
+  if (loading) {
+    return <section className="analysis-section" aria-busy="true"><p className="analysis-status">법조문과 대조하는 중입니다…</p></section>;
+  }
+  if (!statute || !analysis) {
+    return (
+      <section className="analysis-section">
+        <p className="analysis-status">{ANALYSIS_ABSENCE_REASON[unavailable] || ANALYSIS_ABSENCE_REASON.ANALYSIS_API_UNAVAILABLE}</p>
+      </section>
+    );
+  }
+
+  const noteFor = (id) => analysis.elementNotes.find((item) => item.id === id)?.text;
+
+  return (
+    <section className="analysis-section" aria-labelledby="analysis-heading">
+      <div className="analysis-divider" role="separator">
+        <span>여기부터는 AI가 쓴 설명입니다</span>
+      </div>
+
+      <div className="analysis-card">
+        <h2 id="analysis-heading">법조문으로 본 회원님 상황</h2>
+        <blockquote className="statute-body">{statute.body}</blockquote>
+        <p className="statute-source">
+          {statute.lawName} · {statute.enforcedOn} 시행 ·{" "}
+          <a href={statute.officialUrl} target="_blank" rel="noopener noreferrer">조문 원문 <span aria-hidden="true">↗</span></a>
+        </p>
+
+        <ul className="element-list">
+          {elements.map((element) => (
+            <li key={element.id} className={`element-item is-${element.mention}`}>
+              <div className="element-head">
+                <strong>{element.label}</strong>
+                <span className={`element-mention is-${element.mention}`}>{MENTION_LABEL[element.mention]}</span>
+              </div>
+              <p className="element-quote">“{element.statuteQuote}”</p>
+              <p className="element-evidence">{element.evidence}</p>
+              {noteFor(element.id) && <p className="element-note">{noteFor(element.id)}</p>}
+            </li>
+          ))}
+        </ul>
+
+        <p className="analysis-caution">
+          <strong>각 항목은 회원님이 적은 내용에 그 요건이 언급되었는지만 표시한 것입니다.</strong>
+          {" "}요건이 실제로 충족되는지는 증거를 확인한 뒤 법원이 판단합니다.
+        </p>
+      </div>
+
+      {analysis.overview.length > 0 && (
+        <div className="analysis-card">
+          <h3>AI 종합 설명</h3>
+          {analysis.overview.map((text) => <p key={text}>{text}</p>)}
+          {analysis.precedentNotes.length > 0 && (
+            <ul className="analysis-precedent-notes">
+              {analysis.precedentNotes.map((note) => (
+                <li key={note.text}><span className="analysis-case">{note.caseNumber}</span> {note.text}</li>
+              ))}
+            </ul>
+          )}
+          <p className="source-reminder">AI가 위 조문과 검색된 판례만 근거로 쓴 설명입니다. 법률 자문이 아닙니다.</p>
+        </div>
+      )}
+
+      {analysis.nextSteps.length > 0 && (
+        <div className="analysis-card">
+          <h3>지금 해두면 좋은 것</h3>
+          <ul className="next-steps">{analysis.nextSteps.map((text) => <li key={text}>{text}</li>)}</ul>
+          <p className="source-reminder">자료를 정리하는 방법에 관한 안내이며, 법적 조치를 권하는 것이 아닙니다.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ResultsView({ description, results, coverage, searchFailed, onRetry, onHome, resultsStartRef, analysisState }) {
   const [showAll, setShowAll] = useState(false);
   const facts = useMemo(() => extractCaseFacts(description), [description]);
   const visibleResults = showAll ? results : results.slice(0, 3);
@@ -579,6 +673,10 @@ function ResultsView({ description, results, coverage, searchFailed, onRetry, on
           )}
         </div>
       )}
+
+      {/* Runs whether or not a precedent cleared the bar: an empty search is
+          exactly when the reader has the least to go on. */}
+      {!searchFailed && analysisState && <StatuteAnalysis state={analysisState} />}
     </section>
   );
 }
@@ -588,13 +686,17 @@ export function App() {
   const [caseKey, setCaseKey] = useState(0);
   const [role, setRole] = useState("");
   const [description, setDescription] = useState("");
-  const [allowExternalEmbedding, setAllowExternalEmbedding] = useState(false);
+  const [allowExternalAi, setAllowExternalEmbedding] = useState(false);
   const [results, setResults] = useState([]);
   const [coverage, setCoverage] = useState({ availableCount: null, comparedCount: 0, scoring: null });
   const [searchFailed, setSearchFailed] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [intake, setIntake] = useState({ sessionId: null, questions: [] });
   const [submittedDescription, setSubmittedDescription] = useState("");
+  const [analysisState, setAnalysisState] = useState(null);
+  // Identifies the analysis the screen is waiting for, so a reply that arrives
+  // after the user moved on is discarded instead of rendered.
+  const analysisTokenRef = useRef(0);
   const homeStartRef = useRef(null);
   const resultsStartRef = useRef(null);
   // The live session id, mirrored outside React state so the leave-the-page
@@ -657,13 +759,27 @@ export function App() {
     setRole("");
     setDescription("");
     setSubmittedDescription("");
+    setAnalysisState(null);
+    analysisTokenRef.current += 1;
     setAllowExternalEmbedding(false);
     // Remount the composer so the capture, its transcript and any answers go with it.
     setCaseKey((key) => key + 1);
     goHome();
   }
 
-  async function finishIntake(sessionId) {
+  async function requestAnalysis({ redactedText, precedents }) {
+    const token = ++analysisTokenRef.current;
+    setAnalysisState({ loading: true, statute: null, elements: [], analysis: null, unavailable: null });
+    const next = await analyseCase({ redactedText, precedents, allowExternalAi });
+    // A new case may have started while this was in flight.
+    if (token !== analysisTokenRef.current) return;
+    setAnalysisState({ loading: false, ...next });
+  }
+
+  // The redacted text travels as an argument rather than being read from state:
+  // startIntake sets it and calls straight through, so the state this closure
+  // captured is still the previous render's empty string.
+  async function finishIntake(sessionId, redactedText = submittedDescription) {
     setAnalyzing(true);
     setSearchFailed(false);
     // The server deletes the session whether the search succeeds or fails, so
@@ -671,7 +787,7 @@ export function App() {
     activeSessionRef.current = null;
     setIntake({ sessionId: null, questions: [] });
     try {
-      const response = await completeIntake({ sessionId, allowExternalEmbedding });
+      const response = await completeIntake({ sessionId, allowExternalAi });
       setResults(response.results);
       setCoverage({
         availableCount: response.availableCount,
@@ -679,6 +795,9 @@ export function App() {
         scoring: response.scoring,
       });
       setView("results");
+      // Deliberately not awaited: the cards are ready now and the statute
+      // reading takes about ten seconds to come back.
+      requestAnalysis({ redactedText, precedents: response.results });
     } catch {
       setResults([]);
       setCoverage({ availableCount: null, comparedCount: 0, scoring: null });
@@ -700,7 +819,7 @@ export function App() {
     try {
       const response = await createIntake({ role, redactedText });
       trackIntake({ sessionId: response.sessionId, questions: response.questions || [] });
-      if ((response.questions || []).length === 0) await finishIntake(response.sessionId);
+      if ((response.questions || []).length === 0) await finishIntake(response.sessionId, redactedText);
     } catch {
       setSearchFailed(true);
       setView("results");
@@ -737,7 +856,7 @@ export function App() {
       const session = await createIntake({ role, redactedText: submittedDescription });
       const questions = session.questions || [];
       if (questions.length === 0) {
-        await finishIntake(session.sessionId);
+        await finishIntake(session.sessionId, submittedDescription);
         return;
       }
 
@@ -754,7 +873,7 @@ export function App() {
       }
 
       await answerIntake({ sessionId: session.sessionId, answers });
-      await finishIntake(session.sessionId);
+      await finishIntake(session.sessionId, submittedDescription);
     } catch {
       setSearchFailed(true);
       setView("results");
@@ -782,7 +901,7 @@ export function App() {
               setDescription={setDescription}
               onSubmit={startIntake}
               analyzing={analyzing}
-              allowExternalEmbedding={allowExternalEmbedding}
+              allowExternalAi={allowExternalAi}
               setAllowExternalEmbedding={setAllowExternalEmbedding}
               intake={intake}
               onStartIntake={startIntake}
@@ -799,6 +918,7 @@ export function App() {
                 onRetry={retrySearch}
                 onHome={goHome}
                 resultsStartRef={resultsStartRef}
+                analysisState={analysisState}
               />
             )}
           </main>

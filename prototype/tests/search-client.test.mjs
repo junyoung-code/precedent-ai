@@ -41,7 +41,7 @@ test("posts the case description and maps only grounded API result fields", asyn
   const response = await searchSimilarPrecedents({
     query: "게임 채팅에서 성적인 욕설을 보냈습니다",
     limit: 3,
-    allowExternalEmbedding: true,
+    allowExternalAi: true,
     fetchImpl,
   });
 
@@ -49,7 +49,7 @@ test("posts the case description and maps only grounded API result fields", asyn
   assert.deepEqual(request.body, {
     query: "게임 채팅에서 성적인 욕설을 보냈습니다",
     limit: 3,
-    allowExternalEmbedding: true,
+    allowExternalAi: true,
   });
   assert.equal(response.availableCount, 51);
   assert.equal(response.results[0].similarity.total, 76);
@@ -67,7 +67,7 @@ test("defaults external embedding consent to false", async () => {
     return { ok: true, json: async () => ({ results: [] }) };
   };
   await searchSimilarPrecedents({ query: "게임 채팅", fetchImpl });
-  assert.equal(body.allowExternalEmbedding, false);
+  assert.equal(body.allowExternalAi, false);
 });
 
 test("drops records whose official identity or law.go.kr URL is invalid", async () => {

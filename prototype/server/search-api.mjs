@@ -1,6 +1,9 @@
 import http from "node:http";
 import { normalizeSearchQuery, searchPrecedents } from "./search-precedents.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
+import { validateGroundedAnalysis } from "./grounded-analysis.mjs";
+import { mapFactsToArticle13 } from "./statute-elements.mjs";
+import { COMMUNICATION_OBSCENITY_ARTICLE, readStatuteArticle } from "./statutes.mjs";
 import { buildIntakeQuestions } from "./intake-questions.mjs";
 import {
   answerIntakeSession,
@@ -33,10 +36,46 @@ function intakeInputError() {
   return Object.assign(new Error("가려진 사례 설명을 입력해주세요."), { code: "INTAKE_INPUT_REQUIRED" });
 }
 
+/**
+ * Explains the statute against what the user wrote and what the search found.
+ *
+ * A separate request from the search on purpose: the precedent cards are ready
+ * in a second and must not wait on a model that takes ten. Nothing here is
+ * stored — the description arrives, is analysed, and is gone with the response.
+ */
+async function analyseCase({ pool, body, analysisClient, extractFacts }) {
+  const redactedText = String(body.redactedText || "").trim();
+  if (!redactedText) throw intakeInputError();
+  if (!analysisClient) return { analysis: null, unavailable: "ANALYSIS_DISABLED" };
+
+  const statute = await readStatuteArticle({ pool, ...COMMUNICATION_OBSCENITY_ARTICLE });
+  if (!statute) return { analysis: null, unavailable: "STATUTE_MISSING" };
+
+  const precedents = Array.isArray(body.precedents) ? body.precedents.slice(0, 5) : [];
+  const elements = mapFactsToArticle13(extractFacts(redactedText));
+  let payload;
+  try {
+    const result = await analysisClient.analyze({ statute, elements, description: redactedText, precedents });
+    payload = result.analysis;
+  } catch (error) {
+    return { analysis: null, unavailable: error.code || "ANALYSIS_API_UNAVAILABLE" };
+  }
+
+  const allowed = new Set(precedents.map((item) => String(item?.caseNumber || "")).filter(Boolean));
+  const checked = validateGroundedAnalysis(payload, allowed);
+  return {
+    statute: { lawName: statute.lawName, articleTitle: statute.articleTitle, body: statute.body, enforcedOn: statute.enforcedOn, officialUrl: statute.officialUrl },
+    elements: elements.map(({ id, label, statuteQuote, mention, evidence }) => ({ id, label, statuteQuote, mention, evidence })),
+    analysis: { overview: checked.overview, elementNotes: checked.elementNotes, precedentNotes: checked.precedentNotes, nextSteps: checked.nextSteps },
+    unavailable: null,
+  };
+}
+
 export function createSearchApiServer({
   pool,
   search = searchPrecedents,
   embeddingClient = null,
+  analysisClient = null,
   intakeSessions = { createIntakeSession, answerIntakeSession, deleteIntakeSession, getIntakeSessionForCompletion },
   extractFacts = extractFactTags,
   buildQuestions = buildIntakeQuestions,
@@ -77,12 +116,25 @@ export function createSearchApiServer({
           const session = await intakeSessions.getIntakeSessionForCompletion({ pool, sessionId });
           const query = [session.redactedText, ...Object.values(session.answers)].join("\n");
           const normalized = normalizeSearchQuery(query, body.limit);
-          const requestEmbeddingClient = body.allowExternalEmbedding === true ? embeddingClient : null;
+          const requestEmbeddingClient = body.allowExternalAi === true ? embeddingClient : null;
           const result = await search({ pool, query: normalized.text, limit: normalized.limit, embeddingClient: requestEmbeddingClient });
           return sendJson(response, 200, result);
         } finally {
           await intakeSessions.deleteIntakeSession({ pool, sessionId });
         }
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/analysis") {
+        const body = await readJson(request);
+        // Consent covers every external call, so a refusal reaches the model
+        // client rather than being filtered after the fact.
+        const consented = body.allowExternalAi === true;
+        return sendJson(response, 200, await analyseCase({
+          pool,
+          body,
+          analysisClient: consented ? analysisClient : null,
+          extractFacts,
+        }));
       }
 
       const cancelMatch = url.pathname.match(/^\/api\/intake\/([^/]+)$/);
@@ -95,7 +147,7 @@ export function createSearchApiServer({
       }
       const body = await readJson(request);
       const normalized = normalizeSearchQuery(body.query, body.limit);
-      const requestEmbeddingClient = body.allowExternalEmbedding === true ? embeddingClient : null;
+      const requestEmbeddingClient = body.allowExternalAi === true ? embeddingClient : null;
       const result = await search({
         pool,
         query: normalized.text,

@@ -18,7 +18,7 @@ test("sends only redacted text when creating intake", async () => {
 
 test("uses dedicated answer, completion, and cancellation paths", async () => {
   await answerIntake({ sessionId: "s1", answers: { medium: "카카오톡" }, fetchImpl: fakeFetch("/api/intake/s1/answers", "POST") });
-  await completeIntake({ sessionId: "s1", allowExternalEmbedding: false, fetchImpl: fakeFetch("/api/intake/s1/complete", "POST") });
+  await completeIntake({ sessionId: "s1", allowExternalAi: false, fetchImpl: fakeFetch("/api/intake/s1/complete", "POST") });
   await cancelIntake({ sessionId: "s1", fetchImpl: fakeFetch("/api/intake/s1", "DELETE") });
 });
 
