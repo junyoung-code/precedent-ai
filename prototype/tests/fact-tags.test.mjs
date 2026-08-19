@@ -80,3 +80,42 @@ test("compares only known neutral fields and returns match evidence", () => {
   assert.ok(comparison.differentFacts.some((item) => item.field === "repetition"));
   assert.equal(Object.hasOwn(comparison, "outcome"), false);
 });
+
+test("reads the words a complaint is actually written in", () => {
+  // The six terms the extractor started with — 성적, 음란, 야한, 나체, 성기,
+  // 성관계 — are how a judgment describes an expression, not how anyone reports
+  // receiving one. A real description quotes what was said, and the judgments in
+  // this repository quote the same words back.
+  const reported = extractFactTags(
+    "리그오브레전드를 하다가 시비가 붙어서, 상대방이 나한테 니애미, 니애미 잘먹겠습니다, 등 패드립을 쳤어.",
+  );
+  assert.equal(reported.expressionType, "insult_with_sexual_terms");
+  assert.equal(reported.issueTags.includes("성적표현"), true);
+
+  for (const description of [
+    "게임에서 진 뒤에 느금마 소리를 계속 들었습니다.",
+    "상대가 저한테 씹새끼라고 했습니다.",
+    "카톡으로 니꼬추 어쩌고 하는 메시지를 보냈습니다.",
+    "모르는 사람이 자위하는 영상을 보냈습니다.",
+  ]) {
+    assert.notEqual(extractFactTags(description).expressionType, "other", description);
+  }
+});
+
+test("does not read an insult, or an everyday word, as a sexual one", () => {
+  // Widening the vocabulary must not drag unrelated complaints into scope: the
+  // slur terms are substrings, and several of them live inside ordinary words.
+  for (const description of [
+    "상대가 저를 바보라고 욕했습니다.",
+    "게임 실력이 나쁘다고 놀림을 받았습니다.",
+    "밥을 씹어 먹다가 이가 부러졌습니다.",
+    "비를 맞아서 옷이 다 젖었습니다.",
+    "벽에 못을 박아 달라고 부탁했습니다.",
+    "고추장을 사왔습니다.",
+    "어머니가 편찮으셔서 병원에 갔습니다.",
+  ]) {
+    const facts = extractFactTags(description);
+    assert.equal(facts.expressionType, "other", description);
+    assert.equal(facts.issueTags.includes("성적표현"), false, description);
+  }
+});

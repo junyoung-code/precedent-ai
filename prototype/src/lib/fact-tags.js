@@ -22,6 +22,19 @@ const SCALAR_FIELDS = [
   "repetition",
 ];
 
+// The statute's vocabulary, which is how a judgment describes the expression.
+const SEXUAL_SUBJECT_TERMS = ["성적", "음란", "야한", "나체", "성기", "성관계"];
+
+// What people actually write. Nobody reports being sent "성적인 표현"; they quote
+// what was said, and the judgments in this repository quote the same words back
+// — "니꼬추 3cm", "○○ 씹새끼", "니 ㅇ미가 …". Reading only the first list drops a
+// real complaint out of scope for using the words it happened in.
+const SEXUAL_SLUR_TERMS = [
+  "패드립", "니애미", "니애비", "애미", "니미", "느금마", "느개비", "ㅇ미",
+  "보지", "자지", "좆", "꼬추", "씹새", "씹년", "씹할", "젖가슴", "젖탱",
+  "따먹", "강간", "성폭행", "자위", "야동",
+];
+
 function includesAny(text, words) {
   return words.some((word) => text.includes(word));
 }
@@ -42,7 +55,8 @@ function jaccard(left, right) {
 
 export function extractFactTags(description, _options = {}) {
   const normalizedText = String(description || "").normalize("NFKC").trim().toLowerCase();
-  const hasSexual = includesAny(normalizedText, ["성적", "음란", "야한", "나체", "성기", "성관계"]);
+  const hasSexual = includesAny(normalizedText, SEXUAL_SUBJECT_TERMS)
+    || includesAny(normalizedText, SEXUAL_SLUR_TERMS);
   const hasInsult = includesAny(normalizedText, ["욕설", "비하", "조롱", "모욕", "패드립"]);
   const hasImage = includesAny(normalizedText, ["사진", "이미지", "영상", "동영상", "나체"]);
 
