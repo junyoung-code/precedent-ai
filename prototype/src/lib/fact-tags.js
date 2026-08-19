@@ -126,8 +126,16 @@ export function compareFactTags(queryFacts, precedentFacts) {
   }
 
   const comparableCount = matchedFacts.length + differentFacts.length;
+  // messageForm always carries a value, so it is the one field two records can
+  // always compare. On its own it is not evidence of a similar case: a precedent
+  // whose facts could not be extracted would score a perfect match off it and
+  // outrank every richly tagged judgment.
+  const onlyDefaultedField = comparableCount === 1
+    && [...matchedFacts, ...differentFacts][0].field === "messageForm";
   return {
-    factScore: comparableCount === 0 ? 0 : Math.round((matchedFacts.length / comparableCount) * 100),
+    factScore: comparableCount === 0 || onlyDefaultedField
+      ? 0
+      : Math.round((matchedFacts.length / comparableCount) * 100),
     issueScore: jaccard(queryFacts?.issueTags, precedentFacts?.issueTags),
     comparableCount,
     matchedFacts,

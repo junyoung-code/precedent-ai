@@ -47,6 +47,28 @@ test("does not change tags or scores based on the selected user role", () => {
   assert.equal(compareFactTags(victim, reported).factScore, 100);
 });
 
+test("does not reward a precedent whose facts could not be extracted", () => {
+  // messageForm defaults to "text" rather than being detected, so it is the one
+  // field every pair can always compare. Seven stored judgments yield no other
+  // fact, and on that single field alone they scored a perfect 100 — outranking
+  // richly tagged precedents that disagreed on one detail.
+  const query = extractFactTags("게임 채팅으로 모르는 사람이 성적인 욕설을 여러 번 보냈습니다.");
+  const blank = {
+    medium: "unknown", messageForm: "text", recipientIdentification: "unknown",
+    reachedRecipient: "unknown", relationship: "unknown", context: "unknown",
+    expressionType: "other", repetition: "unknown", additionalChannels: [], issueTags: [],
+  };
+
+  const blankComparison = compareFactTags(query, blank);
+  assert.equal(blankComparison.comparableCount, 1);
+  assert.deepEqual(blankComparison.matchedFacts.map((item) => item.field), ["messageForm"]);
+  assert.equal(blankComparison.factScore, 0);
+
+  // One more comparable field is enough for the ratio to mean something.
+  const named = compareFactTags(query, { ...blank, medium: "game_chat" });
+  assert.equal(named.factScore, 100);
+});
+
 test("compares only known neutral fields and returns match evidence", () => {
   const query = extractFactTags("게임 채팅에서 모르는 사람에게 성적인 욕설을 한 번 보냈습니다.");
   const precedent = extractFactTags("게임 채팅에서 모르는 사람에게 성적인 욕설을 여러 번 보냈습니다.");
