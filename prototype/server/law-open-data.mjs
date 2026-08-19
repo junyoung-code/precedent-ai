@@ -68,9 +68,12 @@ export class LawOpenDataClient {
     this.http = { timeoutMs, ...http };
   }
 
-  async listCandidates({ query, page = 1, display = 20 }) {
+  // search=1 matches the case name, search=2 the full judgment text. Full-text
+  // matching pulls in judgments that merely cite the offence, so the caller has
+  // to opt into it.
+  async listCandidates({ query, page = 1, display = 20, search = "1" }) {
     const payload = await this.#get("lawSearch.do", {
-      target: "prec", type: "JSON", search: "2", query, page, display,
+      target: "prec", type: "JSON", search, query, page, display,
     });
     return {
       candidates: parsePrecedentList(payload),

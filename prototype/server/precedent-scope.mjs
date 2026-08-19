@@ -24,6 +24,19 @@ export function classifyPrecedentFocus(caseName) {
   return "focused";
 }
 
+/**
+ * Whether a case name puts this offence in the judgment at all.
+ *
+ * The search query gates on `case_name ILIKE '%통신매체이용음란%'`, so collection
+ * has to read the name the same way — a looser test here stores records the
+ * search can never return, which is how 17 unrelated judgments got in. Unlike
+ * classifyPrecedentFocus this does not collapse whitespace, because the SQL
+ * gate does not either.
+ */
+export function isCommunicationObscenityCaseName(caseName) {
+  return String(caseName || "").normalize("NFKC").includes(TARGET_OFFENSE);
+}
+
 export function isFocusedCommunicationObscenity(caseName) {
   return compact(caseName).includes(TARGET_OFFENSE)
     && classifyPrecedentFocus(caseName) === "focused";

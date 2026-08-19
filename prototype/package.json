@@ -17,6 +17,7 @@
     "summaries:backfill": "node --env-file-if-exists=.env.local scripts/backfill-summaries.mjs",
     "summaries:estimate": "node --env-file-if-exists=.env.local scripts/estimate-summaries.mjs",
     "data:check": "node --env-file-if-exists=.env.local scripts/check-data-integrity.mjs",
+    "data:prune": "node --env-file-if-exists=.env.local scripts/prune-unrelated-precedents.mjs",
     "intake:purge": "node --env-file-if-exists=.env.local scripts/purge-expired-intake-sessions.mjs",
     "quality:evaluate": "node --env-file-if-exists=.env.local scripts/evaluate-search-quality.mjs",
     "test": "node --test tests/*.test.mjs",

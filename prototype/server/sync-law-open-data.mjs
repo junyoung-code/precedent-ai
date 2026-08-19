@@ -1,7 +1,29 @@
 import { createHash } from "node:crypto";
+import { isCommunicationObscenityCaseName } from "./precedent-scope.mjs";
+
+const MAX_PAGE_SIZE = 100;
 
 function hashJson(value) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+/**
+ * Walks the result pages until the provider's own total is covered or the caller's
+ * limit is met. Reading only the first page silently caps a collection at the page
+ * size, which is invisible until someone counts the rows.
+ */
+export async function collectCandidates({ api, query, limit, search }) {
+  const collected = [];
+  let totalCount = 0;
+  for (let page = 1; collected.length < limit; page += 1) {
+    const display = Math.min(Math.max(limit - collected.length, 1), MAX_PAGE_SIZE);
+    const list = await api.listCandidates({ query, page, display, search });
+    totalCount = list.totalCount;
+    if (!list.candidates.length) break;
+    collected.push(...list.candidates);
+    if (collected.length >= totalCount) break;
+  }
+  return { candidates: collected.slice(0, limit), totalCount };
 }
 
 export function classifyExistingRecord(previous, precedent) {
@@ -10,7 +32,14 @@ export function classifyExistingRecord(previous, precedent) {
   return previous.source_hash === precedent.sourceHash ? "unchanged" : "changed";
 }
 
-export async function syncLawOpenData({ pool, api, query, limit = 20 }) {
+export async function syncLawOpenData({
+  pool,
+  api,
+  query,
+  limit = 20,
+  search,
+  isRelevant = isCommunicationObscenityCaseName,
+}) {
   const source = await pool.query("SELECT id FROM data_sources WHERE provider = 'law_open_data'");
   if (!source.rowCount) throw new Error("LAW_DATA_SOURCE_MISSING");
 
@@ -20,15 +49,22 @@ export async function syncLawOpenData({ pool, api, query, limit = 20 }) {
   );
   const runId = run.rows[0].id;
   const connection = await pool.connect();
-  const summary = { totalCount: 0, fetched: 0, new: 0, changed: 0, unchanged: 0, duplicate: 0, providerRecordIds: [] };
+  const summary = { totalCount: 0, fetched: 0, skipped: 0, new: 0, changed: 0, unchanged: 0, duplicate: 0, skippedCaseNames: [], providerRecordIds: [] };
 
   try {
-    const list = await api.listCandidates({ query, display: Math.min(Math.max(limit, 1), 100) });
+    const list = await collectCandidates({ api, query, limit: Math.max(limit, 1), search });
     summary.totalCount = list.totalCount;
     await connection.query("BEGIN");
 
-    for (const candidate of list.candidates.slice(0, limit)) {
+    for (const candidate of list.candidates) {
       const { precedent, raw } = await api.fetchDetail(candidate.providerRecordId);
+      // The last gate before storage. A record the search can never return is
+      // not worth the row, the embedding, or the inflated count.
+      if (!isRelevant(precedent.caseName)) {
+        summary.skipped += 1;
+        summary.skippedCaseNames.push(precedent.caseName);
+        continue;
+      }
       const existing = await connection.query(
         `SELECT id, provider_record_id, source_hash FROM precedents
          WHERE (provider = $1 AND provider_record_id = $2)

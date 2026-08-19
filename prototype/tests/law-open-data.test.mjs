@@ -58,6 +58,28 @@ test("sends the browser user-agent and law.go.kr referer the API requires", asyn
   assert.equal(seen[0].referer, "https://www.law.go.kr/");
 });
 
+test("searches case names by default and passes the page through", async () => {
+  const seen = [];
+  const client = new LawOpenDataClient({
+    oc: "test",
+    fetchImpl: async (url) => {
+      seen.push(new URL(url).searchParams);
+      return new Response(JSON.stringify({ PrecSearch: { prec: [], totalCnt: 0 } }));
+    },
+  });
+
+  // Full-text matching returns judgments that merely cite the offence, so it has
+  // to be asked for by name.
+  await client.listCandidates({ query: "통신매체이용음란" });
+  assert.equal(seen[0].get("search"), "1");
+  assert.equal(seen[0].get("page"), "1");
+
+  await client.listCandidates({ query: "통신매체이용음란", page: 3, display: 100, search: "2" });
+  assert.equal(seen[1].get("search"), "2");
+  assert.equal(seen[1].get("page"), "3");
+  assert.equal(seen[1].get("display"), "100");
+});
+
 test("separates a header-level auth rejection from a missing approval", async () => {
   const client = new LawOpenDataClient({
     oc: "test",

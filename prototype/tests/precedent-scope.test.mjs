@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   classifyPrecedentFocus,
   focusPenalty,
+  isCommunicationObscenityCaseName,
   isFocusedCommunicationObscenity,
   selectCommunicationObscenityParagraphs,
 } from "../server/precedent-scope.mjs";
@@ -29,6 +30,34 @@ test("classifies focused, mixed, and peripheral precedent names", () => {
     true,
   );
   assert.equal(isFocusedCommunicationObscenity("손해배상(기)등청구의소"), false);
+});
+
+test("reads a case name the way the search query does", () => {
+  // These four came in through a full-text collection and were never returnable,
+  // because the search gates on case_name ILIKE '%통신매체이용음란%'.
+  for (const caseName of [
+    "손해배상(기)('twistkim' 도메인 이름 사건)",
+    "저작권법위반방조",
+    "전기통신기본법위반(인정된죄명:전기통신기본법위반방조)",
+    "아동·청소년의성보호에관한법률위반(음란물제작·배포등)",
+  ]) {
+    assert.equal(isCommunicationObscenityCaseName(caseName), false, caseName);
+  }
+
+  for (const caseName of [
+    "성폭력범죄의처벌등에관한특례법위반(통신매체이용음란)",
+    "협박·성폭력범죄의처벌등에관한특례법위반(통신매체이용음란)",
+    "성폭력범죄의처벌등에관한특례법위반(통신매체이용음란)[통신매체이용음란 사건]",
+  ]) {
+    assert.equal(isCommunicationObscenityCaseName(caseName), true, caseName);
+  }
+
+  // Unlike classifyPrecedentFocus this must not collapse whitespace: SQL ILIKE
+  // does not either, so a looser reading would store an unsearchable record.
+  assert.equal(isCommunicationObscenityCaseName("통신매체 이용 음란"), false);
+  assert.equal(classifyPrecedentFocus("통신매체 이용 음란"), "focused");
+  assert.equal(isCommunicationObscenityCaseName(""), false);
+  assert.equal(isCommunicationObscenityCaseName(null), false);
 });
 
 test("selects keyword paragraphs with one neighbor on each side", () => {
