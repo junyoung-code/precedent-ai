@@ -119,3 +119,38 @@ test("does not read an insult, or an everyday word, as a sexual one", () => {
     assert.equal(facts.issueTags.includes("성적표현"), false, description);
   }
 });
+
+test("names the medium the way a complaint names it", () => {
+  // Taken from how people write in public legal Q&A: the Korean spelling of DM,
+  // the games by their short names, the misspelling of 메시지. An unread medium
+  // costs the fact-tag term even when the complaint is otherwise understood.
+  const expected = [
+    ["트위터로 개인 디엠을 보내 성적인 말을 했습니다.", "sns_mention"],
+    ["틱톡 디엠으로 성적인 말을 들었습니다.", "sns_mention"],
+    ["오픈카톡방에서 걸레년이라고 했습니다.", "kakao"],
+    ["모르는 번호로 메세지가 왔는데 성적인 내용이었습니다.", "digital_message"],
+    ["롤하다가 시비붙어서 패드립 들었어요.", "game_chat"],
+    ["롤에서 상대가 느금마라고 계속 했습니다.", "game_chat"],
+    ["배그 하다가 귓속말로 니애미 어쩌고 들었어요.", "game_chat"],
+    ["옵치에서 제 어머니를 걸고 성적인 욕을 했습니다.", "game_chat"],
+    ["겜매음으로 고소당할 수 있다고 해서 문의드립니다.", "game_chat"],
+  ];
+  for (const [description, medium] of expected) {
+    assert.equal(extractFactTags(description).medium, medium, description);
+  }
+});
+
+test("does not find a game in 컨트롤, 스크롤, 트롤 or 롤케이크", () => {
+  // 롤 is what half the game complaints call it and also a fragment of several
+  // ordinary words, so it is matched with a boundary rather than as a substring.
+  for (const description of [
+    "컨트롤이 안 돼서 스크롤을 내렸습니다.",
+    "롤케이크를 샀습니다.",
+    "트롤 짓을 했다고 욕먹었습니다.",
+    "롤러스케이트를 탔습니다.",
+  ]) {
+    assert.equal(extractFactTags(description).medium, "unknown", description);
+  }
+  // 걸레 is a cleaning rag before it is an insult.
+  assert.equal(extractFactTags("걸레로 바닥을 닦았습니다.").expressionType, "other");
+});

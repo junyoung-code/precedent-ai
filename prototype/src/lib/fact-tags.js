@@ -2,14 +2,26 @@ export const FACT_TAG_EXTRACTION_VERSION = "rule-v2";
 
 const UNKNOWN_VALUES = new Set([undefined, null, "", "unknown", "other"]);
 
+// Drawn from how people actually name these things in public legal Q&A: the
+// Korean spelling of DM, the games by their short names, and the misspelling of
+// 메시지 that turns up constantly. A medium the rules cannot read costs the 45%
+// fact-tag term even when the complaint is otherwise understood.
 const MEDIUM_RULES = [
   ["bank_transfer", ["송금", "계좌", "이체", "1원"]],
-  ["kakao", ["카카오", "카톡"]],
-  ["sns_mention", ["트위터", "sns", "멘션", "인스타", "페이스북", "dm"]],
-  ["game_chat", ["게임", "채팅창"]],
+  ["kakao", ["카카오", "카톡", "오픈채팅"]],
+  ["sns_mention", ["트위터", "sns", "멘션", "인스타", "페이스북", "dm", "디엠", "틱톡", "트윗"]],
+  ["game_chat", [
+    "게임", "채팅창", "겜", "귓속말", "인게임",
+    "리그오브레전드", "리그 오브", "배틀그라운드", "배그", "오버워치", "옵치",
+    "메이플", "발로란트", "로스트아크", "서든어택",
+  ]],
   ["direct_delivery", ["편지", "출입문", "문에 끼워"]],
-  ["digital_message", ["문자", "메시지", "메신저"]],
+  ["digital_message", ["문자", "메시지", "메세지", "메신저"]],
 ];
+
+// 롤 is the name half the game complaints use and also a fragment of 컨트롤,
+// 스크롤, 트롤, 롤러 and 롤케이크, so it needs a boundary a substring cannot give.
+const MEDIUM_PATTERNS = [["game_chat", /(?<![트크])롤(?!러|케|모|링)/u]];
 
 const SCALAR_FIELDS = [
   "medium",
@@ -23,7 +35,11 @@ const SCALAR_FIELDS = [
 ];
 
 // The statute's vocabulary, which is how a judgment describes the expression.
-const SEXUAL_SUBJECT_TERMS = ["성적", "음란", "야한", "나체", "성기", "성관계"];
+const SEXUAL_SUBJECT_TERMS = [
+  "성적", "음란", "야한", "나체", "성기", "성관계",
+  // Someone who names the offence is describing this, whatever words follow.
+  "통매음", "겜매음",
+];
 
 // What people actually write. Nobody reports being sent "성적인 표현"; they quote
 // what was said, and the judgments in this repository quote the same words back
@@ -33,6 +49,7 @@ const SEXUAL_SLUR_TERMS = [
   "패드립", "니애미", "니애비", "애미", "니미", "느금마", "느개비", "ㅇ미",
   "보지", "자지", "좆", "꼬추", "씹새", "씹년", "씹할", "젖가슴", "젖탱",
   "따먹", "강간", "성폭행", "자위", "야동",
+  "걸레년", "걸레같", "창녀", "섹스", "섹시", "야설", "음담패설", "변태", "몸캠", "딸딸이",
 ];
 
 function includesAny(text, words) {
@@ -60,9 +77,10 @@ export function extractFactTags(description, _options = {}) {
   const hasInsult = includesAny(normalizedText, ["욕설", "비하", "조롱", "모욕", "패드립"]);
   const hasImage = includesAny(normalizedText, ["사진", "이미지", "영상", "동영상", "나체"]);
 
-  const detectedMediums = MEDIUM_RULES
-    .filter(([, words]) => includesAny(normalizedText, words))
-    .map(([value]) => value);
+  const detectedMediums = unique([
+    ...MEDIUM_RULES.filter(([, words]) => includesAny(normalizedText, words)).map(([value]) => value),
+    ...MEDIUM_PATTERNS.filter(([, pattern]) => pattern.test(normalizedText)).map(([value]) => value),
+  ]);
   const medium = detectedMediums[0] || "unknown";
 
   let recipientIdentification = "unknown";
