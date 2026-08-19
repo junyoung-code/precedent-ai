@@ -31,12 +31,14 @@ test("gives the labelled intake button room instead of the icon button's box", (
 test("keeps reduced-motion behavior explicit", () => {
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /scroll-behavior:\s*auto/);
+  // The screen-to-screen slide is motion a reader may have asked not to see.
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.deck-screen\.is-active\.slide-forward[^}]*animation: none/);
 });
 
 test("keeps every result panel in the printed copy", () => {
   // Saving the result must not save only whichever tab happened to be open.
-  assert.match(css, /@media print[\s\S]*?\[role="tabpanel"\]\[hidden\] \{ display: block !important; \}/);
-  assert.match(css, /@media print[\s\S]*?\.tab-strip \{ display: none; \}/);
+  assert.match(css, /@media print[\s\S]*?\.deck-screen\[hidden\] \{ display: block !important; \}/);
+  assert.match(css, /@media print[\s\S]*?\.deck-arrow, \.deck-progress/);
 });
 
 test("separates quoted law, applied rule, and generated text by size and weight", () => {

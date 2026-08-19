@@ -117,6 +117,39 @@ function RoleSelector({ value, onChange }) {
   );
 }
 
+const SEARCH_STEPS = [
+  "입력에서 이름·연락처를 가렸습니다",
+  "검증된 공개 판례와 사실관계를 비교하고 있습니다",
+  "닮은 점과 다른 점을 정리하고 있습니다",
+];
+
+/**
+ * The wait before the result appears. A search takes a second or two and the
+ * statute reading about ten, so a single line of text reads as a stall; the
+ * steps say which part is running.
+ */
+function SearchProgress() {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setStep((current) => Math.min(current + 1, SEARCH_STEPS.length - 1)), 420);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="search-progress" role="status" aria-live="polite">
+      <div className="search-progress-bar" aria-hidden="true"><span /></div>
+      <ol className="search-progress-steps">
+        {SEARCH_STEPS.map((text, index) => (
+          <li key={text} className={index === step ? "is-active" : index < step ? "is-done" : ""}>
+            <span className="search-progress-mark" aria-hidden="true">{index < step ? "✓" : "•"}</span>
+            {text}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function CaseComposer({
   role,
   onRoleChange,
@@ -307,7 +340,7 @@ function CaseComposer({
         </label>)}
         <div className="intake-actions"><button type="button" onClick={onCancelIntake}>취소하고 입력 지우기</button><button type="button" className="analyze-button intake-complete" disabled={analyzing} onClick={() => onSubmitAnswers(answers)}>확인 후 검색</button></div>
       </section>}
-      {analyzing && <p className="analysis-status" role="status">검증된 공개 판례와 사실관계를 비교하고 있습니다.</p>}
+      {analyzing && <SearchProgress />}
       <label className="embedding-consent">
         <input
           type="checkbox"
@@ -553,7 +586,20 @@ const ANALYSIS_ABSENCE_REASON = {
  * also stops the two from reading as one continuous document.
  */
 function AnalysisPlaceholder({ state }) {
-  if (state.loading) return <p className="analysis-status" aria-busy="true">법조문과 대조하는 중입니다…</p>;
+  // The real wait in this product. The search settles in about a second; reading
+  // the statute takes ten, and a lone spinner for that long reads as a hang.
+  if (state.loading) {
+    return (
+      <div className="analysis-loading" role="status" aria-live="polite">
+        <div className="search-progress-bar" aria-hidden="true"><span /></div>
+        <p>법조문과 회원님이 적은 내용을 하나씩 맞춰보고 있습니다.</p>
+        <p className="analysis-loading-note">보통 10초쯤 걸립니다. 판례 화면은 먼저 보실 수 있습니다.</p>
+        <div className="skeleton-list" aria-hidden="true">
+          {[0, 1, 2, 3].map((row) => <div key={row} className="skeleton-row" />)}
+        </div>
+      </div>
+    );
+  }
   return <p className="analysis-status">{ANALYSIS_ABSENCE_REASON[state.unavailable] || ANALYSIS_ABSENCE_REASON.ANALYSIS_API_UNAVAILABLE}</p>;
 }
 
@@ -626,69 +672,115 @@ function AiSummaryPanel({ state }) {
   );
 }
 
+function motionBehavior() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
+const RESULT_SCREENS = [
+  { id: "precedents", title: "닮은 판례", generated: false },
+  { id: "statute", title: "법조문에 비춰본 내 상황", generated: true },
+  { id: "summary", title: "AI가 정리한 내 사건", generated: true },
+];
+
 /**
- * Moves between the verified records and the generated text. Printing has to
- * show every panel, so the hidden ones stay in the document and are hidden with
- * CSS rather than dropped from the tree.
+ * Moves through the result one screen at a time.
+ *
+ * Every screen stays in the document even while hidden: saving the result has
+ * to save all three, not whichever one happened to be open. Only the visible
+ * one animates, so the deck is as tall as what is on screen rather than as
+ * tall as its longest screen.
  */
-function ResultTabs({ precedents, resultCount, analysisState }) {
-  const [active, setActive] = useState("precedents");
-  const tabRefs = useRef({});
+function ResultDeck({ precedents, resultCount, analysisState }) {
+  const [index, setIndex] = useState(0);
+  const [direction, setDirection] = useState("forward");
+  const deckRef = useRef(null);
   const state = analysisState || { loading: false, statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_DISABLED" };
 
-  const tabs = [
-    { id: "precedents", label: "닮은 판례", badge: resultCount > 0 ? String(resultCount) : null, generated: false },
-    { id: "statute", label: "법조문으로 본 내 상황", badge: null, generated: true },
-    { id: "summary", label: "AI 설명과 다음 단계", badge: null, generated: true },
-  ];
-
-  function onKeyDown(event) {
-    const order = tabs.map((tab) => tab.id);
-    const index = order.indexOf(active);
-    const next = event.key === "ArrowRight" ? index + 1 : event.key === "ArrowLeft" ? index - 1 : null;
-    if (next === null) return;
-    event.preventDefault();
-    const id = order[(next + order.length) % order.length];
-    setActive(id);
-    tabRefs.current[id]?.focus();
+  function go(next) {
+    if (next < 0 || next >= RESULT_SCREENS.length) return;
+    setDirection(next > index ? "forward" : "back");
+    setIndex(next);
+    deckRef.current?.scrollIntoView({ behavior: motionBehavior(), block: "start" });
   }
 
+  function onKeyDown(event) {
+    if (event.key === "ArrowRight") { event.preventDefault(); go(index + 1); }
+    if (event.key === "ArrowLeft") { event.preventDefault(); go(index - 1); }
+  }
+
+  const previous = RESULT_SCREENS[index - 1];
+  const next = RESULT_SCREENS[index + 1];
+  const panels = {
+    precedents,
+    statute: (
+      <>
+        <p className="screen-lead">AI가 아래 법조문을 회원님이 적은 내용과 하나씩 맞춰본 것입니다.</p>
+        <StatutePanel state={state} />
+      </>
+    ),
+    summary: (
+      <>
+        <p className="screen-lead">AI가 쓴 설명입니다. 판례 화면의 기록과 성격이 다릅니다.</p>
+        <AiSummaryPanel state={state} />
+      </>
+    ),
+  };
+
   return (
-    <div className="result-tabs">
-      <div className="tab-strip" role="tablist" aria-label="결과 보기" onKeyDown={onKeyDown}>
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            id={`tab-${tab.id}`}
-            aria-selected={active === tab.id}
-            aria-controls={`panel-${tab.id}`}
-            tabIndex={active === tab.id ? 0 : -1}
-            ref={(node) => { tabRefs.current[tab.id] = node; }}
-            className={`tab-button ${active === tab.id ? "is-active" : ""} ${tab.generated ? "is-generated" : ""}`}
-            onClick={() => setActive(tab.id)}
-          >
-            {tab.generated && <span className="tab-ai" aria-hidden="true">AI</span>}
-            {tab.label}
-            {tab.badge && <span className="tab-badge">{tab.badge}</span>}
-            {tab.generated && state.loading && <span className="tab-spinner" aria-label="불러오는 중" />}
-          </button>
+    <div className="result-deck" ref={deckRef} onKeyDown={onKeyDown} tabIndex={-1}>
+      <div className="deck-progress" aria-hidden="true">
+        {RESULT_SCREENS.map((screen, position) => (
+          <span key={screen.id} className={`deck-dot ${position === index ? "is-active" : ""} ${position < index ? "is-done" : ""}`} />
         ))}
       </div>
 
-      <div className="tab-panels">
-        <div role="tabpanel" id="panel-precedents" aria-labelledby="tab-precedents" hidden={active !== "precedents"}>
-          {precedents}
-        </div>
-        <div role="tabpanel" id="panel-statute" aria-labelledby="tab-statute" hidden={active !== "statute"}>
-          <p className="tab-lead">AI가 아래 법조문을 회원님이 적은 내용과 하나씩 맞춰본 것입니다.</p>
-          <StatutePanel state={state} />
-        </div>
-        <div role="tabpanel" id="panel-summary" aria-labelledby="tab-summary" hidden={active !== "summary"}>
-          <p className="tab-lead">AI가 쓴 설명입니다. 위 판례 탭의 기록과 성격이 다릅니다.</p>
-          <AiSummaryPanel state={state} />
-        </div>
+      <div className="deck-stage">
+      <div className="deck-nav" aria-hidden={false}>
+        {previous ? (
+          <button
+            type="button"
+            className="deck-arrow is-previous"
+            onClick={() => go(index - 1)}
+            aria-label={`이전 화면: ${previous.title}`}
+          >
+            <span aria-hidden="true" className="deck-arrow-mark">←</span>
+            <span className="deck-arrow-label">{previous.title}</span>
+          </button>
+        ) : <span />}
+        {next ? (
+          <button
+            type="button"
+            className="deck-arrow is-next"
+            onClick={() => go(index + 1)}
+            aria-label={`다음 화면: ${next.title}`}
+          >
+            <span className="deck-arrow-label">{next.title}</span>
+            <span aria-hidden="true" className="deck-arrow-mark">→</span>
+            {next.generated && state.loading && <span className="deck-arrow-spinner" aria-hidden="true" />}
+          </button>
+        ) : <span />}
+      </div>
+
+        {RESULT_SCREENS.map((screen, position) => (
+          <section
+            key={screen.id}
+            className={`deck-screen ${position === index ? `is-active slide-${direction}` : ""}`}
+            hidden={position !== index}
+            aria-label={screen.title}
+          >
+            <header className="screen-head">
+              <p className="screen-step">{position + 1} / {RESULT_SCREENS.length}</p>
+              <h2>
+                {screen.generated && <span className="screen-ai" aria-hidden="true">AI</span>}
+                {screen.title}
+                {screen.id === "precedents" && resultCount > 0 && <span className="screen-count">{resultCount}건</span>}
+                {screen.generated && state.loading && <span className="screen-spinner" aria-label="불러오는 중" />}
+              </h2>
+            </header>
+            {panels[screen.id]}
+          </section>
+        ))}
+
       </div>
     </div>
   );
@@ -731,7 +823,7 @@ function ResultsView({ description, results, coverage, searchFailed, onRetry, on
       {!searchFailed && <Coverage resultCount={results.length} coverage={coverage} />}
 
       {searchFailed ? <ErrorResults onRetry={onRetry} /> : (
-        <ResultTabs
+        <ResultDeck
           precedents={(
             results.length === 0
               ? <EmptyResults onHome={onHome} availableCount={coverage.availableCount} />
@@ -790,10 +882,6 @@ export function App() {
     activeSessionRef.current = null;
     setIntake({ sessionId: null, questions: [] });
     if (sessionId) cancelIntake({ sessionId }).catch(() => {});
-  }
-
-  function motionBehavior() {
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
   }
 
   useEffect(() => {

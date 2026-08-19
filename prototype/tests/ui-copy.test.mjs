@@ -144,16 +144,28 @@ test("requires explicit external AI consent and uses the private intake client",
   assert.match(appSource, /검색 서버에 연결하지 못했습니다/);
 });
 
-test("moves between records and generated text as labelled tabs", () => {
-  assert.match(appSource, /role="tablist"/);
-  assert.match(appSource, /role="tabpanel"/);
-  assert.match(appSource, /aria-selected=\{active === tab\.id\}/);
-  // Arrow keys move the strip, and the roving tabindex keeps one stop in it.
+test("moves between records and generated text one screen at a time", () => {
+  // Arrows carry the destination's name, so a reader knows where they are going
+  // before they commit to the move.
+  assert.match(appSource, /aria-label=\{`다음 화면: \$\{next\.title\}`\}/);
+  assert.match(appSource, /aria-label=\{`이전 화면: \$\{previous\.title\}`\}/);
+  assert.match(appSource, /className="deck-arrow-label">\{next\.title\}/);
+  assert.match(appSource, /법조문에 비춰본 내 상황/);
+  assert.match(appSource, /AI가 정리한 내 사건/);
+  // Arrow keys move the deck too.
   assert.match(appSource, /event\.key === "ArrowRight"/);
-  assert.match(appSource, /tabIndex=\{active === tab\.id \? 0 : -1\}/);
-  // Hidden panels stay in the document so printing can reveal them.
-  assert.match(appSource, /hidden=\{active !== "precedents"\}/);
-  // The two AI tabs say so on the tab itself, not only inside the panel.
-  assert.match(appSource, /tab\.generated && <span className="tab-ai"/);
-  assert.match(appSource, /AI가 쓴 설명입니다\. 위 판례 탭의 기록과 성격이 다릅니다/);
+  assert.match(appSource, /event\.key === "ArrowLeft"/);
+  // Hidden screens stay in the document so printing can reveal them.
+  assert.match(appSource, /hidden=\{position !== index\}/);
+  // A generated screen says so on the screen and on the arrow that leads to it.
+  assert.match(appSource, /screen\.generated && <span className="screen-ai"/);
+  assert.match(appSource, /AI가 쓴 설명입니다\. 판례 화면의 기록과 성격이 다릅니다/);
+});
+
+test("shows the wait as steps rather than one stalled line", () => {
+  assert.match(appSource, /SEARCH_STEPS/);
+  assert.match(appSource, /role="status" aria-live="polite"/);
+  assert.match(appSource, /검증된 공개 판례와 사실관계를 비교하고 있습니다/);
+  // The timer is cleared, or leaving mid-search leaks an interval per search.
+  assert.match(appSource, /return \(\) => clearInterval\(timer\)/);
 });

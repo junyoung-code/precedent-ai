@@ -500,25 +500,79 @@ button { color: inherit; }
   .ai-summary-badge, .source-reminder { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
-/* ── Result tabs ─────────────────────────────────────────────────────────────
-   Verified records and generated text live in separate panels so neither reads
-   as a continuation of the other, and one search stops being a five-screen
-   scroll. Hidden panels stay in the document: printing has to show them all. */
-.result-tabs { margin-top: 18px; }
-.tab-strip { display: flex; gap: 6px; border-bottom: 1px solid #e3e0eb; overflow-x: auto; scrollbar-width: none; }
-.tab-strip::-webkit-scrollbar { display: none; }
-.tab-button { position: relative; flex: 0 0 auto; height: 44px; padding: 0 16px; display: inline-flex; align-items: center; gap: 7px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #7c7486; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
-.tab-button:hover { color: #4f3020; }
-.tab-button.is-active { color: #2c2029; border-bottom-color: #4f3020; }
-.tab-button.is-generated.is-active { border-bottom-color: #7a80a8; }
-.tab-ai { padding: 2px 5px; border-radius: 4px; background: #e7e9f3; color: #5b6086; font-size: 9px; font-weight: 800; }
-.tab-button.is-active .tab-ai { background: #5b6086; color: #fff; }
-.tab-badge { padding: 1px 6px; border-radius: 999px; background: #efe7e1; color: #6b5344; font-size: 10px; font-weight: 800; }
-.tab-button.is-active .tab-badge { background: #4f3020; color: #fff; }
-.tab-spinner { width: 11px; height: 11px; border: 2px solid #cfd3e6; border-top-color: #5b6086; border-radius: 50%; animation: tab-spin .7s linear infinite; }
-@keyframes tab-spin { to { transform: rotate(360deg); } }
-.tab-panels { padding-top: 18px; }
-.tab-lead { max-width: 880px; margin: 0 0 12px; color: #6f6879; font-size: 12px; }
+/* ── Result deck ─────────────────────────────────────────────────────────────
+   One screen at a time, moved with the arrows at either edge. Hovering an arrow
+   names where it goes. Hidden screens stay in the document so printing gets all
+   of them; only the visible one animates, so the deck is as tall as what is on
+   screen rather than as tall as its longest screen. */
+.result-deck { margin-top: 20px; outline: none; }
+.deck-progress { display: flex; justify-content: center; gap: 7px; margin-bottom: 16px; }
+.deck-dot { width: 22px; height: 4px; border-radius: 999px; background: #e2dfe9; transition: background .25s ease; }
+.deck-dot.is-done { background: #c3b2a4; }
+.deck-dot.is-active { background: #4f3020; }
+
+.deck-stage { position: relative; }
+.deck-screen { overflow: hidden; }
+.screen-head { margin-bottom: 16px; }
+.screen-step { margin: 0 0 3px; color: #9a93a4; font-size: 10px; font-weight: 800; letter-spacing: .06em; }
+.screen-head h2 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 21px; color: #241b18; }
+.screen-ai { padding: 3px 6px; border-radius: 5px; background: #5b6086; color: #fff; font-size: 10px; font-weight: 800; }
+.screen-count { padding: 2px 8px; border-radius: 999px; background: #efe7e1; color: #6b5344; font-size: 11px; font-weight: 800; }
+.screen-spinner, .deck-arrow-spinner { width: 12px; height: 12px; border: 2px solid #d5d8e8; border-top-color: #5b6086; border-radius: 50%; animation: deck-spin .7s linear infinite; }
+@keyframes deck-spin { to { transform: rotate(360deg); } }
+.screen-lead { max-width: 880px; margin: 0 0 14px; color: #6f6879; font-size: 12.5px; }
+
+/* The slide. Only the entering screen moves — the one leaving is already gone. */
+@keyframes slide-from-right { from { opacity: 0; transform: translateX(46px); } to { opacity: 1; transform: none; } }
+@keyframes slide-from-left { from { opacity: 0; transform: translateX(-46px); } to { opacity: 1; transform: none; } }
+.deck-screen.is-active.slide-forward { animation: slide-from-right .42s cubic-bezier(.22, .61, .36, 1); }
+.deck-screen.is-active.slide-back { animation: slide-from-left .42s cubic-bezier(.22, .61, .36, 1); }
+
+/* A zero-height sticky row: the arrows stay near the middle of the viewport as
+   the reader scrolls a screen, instead of pinning to the top of a tall one. */
+.deck-nav { position: sticky; top: 46vh; z-index: 4; height: 0; display: flex; align-items: center; justify-content: space-between; pointer-events: none; }
+/* The arrows must never rest on a card. A wide window has gutter outside the
+   content column to hang them in; a narrower one has to give up column width
+   instead. Below tablet they dock to the bottom, where a thumb reaches them. */
+@media (min-width: 1100px) { .deck-nav { margin: 0 -54px; } }
+@media (min-width: 700px) and (max-width: 1099px) {
+  .deck-stage { padding-inline: 56px; }
+  .deck-nav { margin-inline: -56px; }
+}
+@media (max-width: 699px) {
+  .deck-nav { position: fixed; inset: auto 0 0; top: auto; height: auto; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: linear-gradient(to top, rgba(250,250,253,.97) 68%, rgba(250,250,253,0)); }
+  .deck-arrow { box-shadow: 0 4px 16px rgba(62, 42, 31, .16); }
+  .deck-arrow-label { max-width: 150px; opacity: 1; }
+  .results-view { padding-bottom: 96px; }
+}
+.deck-nav > * { pointer-events: auto; }
+.deck-arrow { height: 46px; padding: 0 13px; display: inline-flex; align-items: center; gap: 0; border: 1px solid #e3ded6; border-radius: 999px; background: #fff; color: #4f3020; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 20px rgba(62, 42, 31, .1); transition: gap .28s ease, box-shadow .2s ease, transform .2s ease; }
+.deck-arrow:hover, .deck-arrow:focus-visible { box-shadow: 0 10px 26px rgba(62, 42, 31, .17); transform: translateY(-1px); gap: 8px; }
+.deck-arrow-mark { font-size: 16px; line-height: 1; }
+/* The destination name unrolls out of the button rather than floating over it. */
+.deck-arrow-label { max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0; transition: max-width .32s cubic-bezier(.22,.61,.36,1), opacity .22s ease; }
+.deck-arrow:hover .deck-arrow-label, .deck-arrow:focus-visible .deck-arrow-label { max-width: 260px; opacity: 1; }
+
+/* ── Search progress ─────────────────────────────────────────────────────── */
+.search-progress { width: min(100%, 1040px); margin: 14px auto 0; padding: 16px 18px; border: 1px solid #e7e0d8; border-radius: 14px; background: #fffdfa; }
+.search-progress-bar { height: 3px; border-radius: 999px; background: #efe7e0; overflow: hidden; }
+.search-progress-bar span { display: block; width: 38%; height: 100%; border-radius: 999px; background: #8b5a3c; animation: progress-sweep 1.25s ease-in-out infinite; }
+@keyframes progress-sweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(320%); } }
+.search-progress-steps { margin: 13px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.search-progress-steps li { display: flex; align-items: center; gap: 8px; color: #a49a92; font-size: 12.5px; transition: color .3s ease; }
+.search-progress-steps li.is-active { color: #4f3020; font-weight: 700; }
+.search-progress-steps li.is-done { color: #7d8f7a; }
+.search-progress-mark { width: 14px; text-align: center; font-size: 11px; }
+
+.analysis-loading { max-width: 880px; padding: 22px; border: 1px solid #e2e4ee; border-radius: 16px; background: #f8f9fd; }
+.analysis-loading p { margin: 14px 0 0; color: #3f4252; font-size: 13.5px; }
+.analysis-loading-note { color: #7b7e8d !important; font-size: 12px !important; }
+.skeleton-list { margin-top: 18px; display: grid; gap: 11px; }
+.skeleton-row { height: 58px; border-radius: 12px; background: linear-gradient(100deg, #eef0f6 30%, #f7f8fc 50%, #eef0f6 70%); background-size: 220% 100%; animation: skeleton-sweep 1.4s ease-in-out infinite; }
+.skeleton-row:nth-child(2) { animation-delay: .12s; }
+.skeleton-row:nth-child(3) { animation-delay: .24s; }
+.skeleton-row:nth-child(4) { animation-delay: .36s; }
+@keyframes skeleton-sweep { 0% { background-position: 130% 0; } 100% { background-position: -30% 0; } }
 
 /* ── The AI layer ────────────────────────────────────────────────────────────
    Three kinds of text share these cards and must not look alike: the statute is
@@ -572,12 +626,21 @@ button { color: inherit; }
   .analysis-card { padding: 16px; }
   .element-item { padding: 14px; }
   .element-head { flex-direction: column; gap: 6px; }
-  .tab-button { height: 42px; padding: 0 12px; font-size: 12px; }
+  .screen-head h2 { font-size: 17px; }
+  .deck-arrow { height: 40px; padding: 0 11px; font-size: 12px; }
+  .deck-arrow:hover .deck-arrow-label, .deck-arrow:focus-visible .deck-arrow-label { max-width: 150px; }
 }
 
 /* Saving the result must not save only whichever tab happened to be open. */
 @media print {
-  .tab-strip { display: none; }
-  .tab-panels [role="tabpanel"][hidden] { display: block !important; }
-  .tab-panels [role="tabpanel"] { break-inside: avoid; margin-bottom: 18px; }
+  .deck-arrow, .deck-progress, .screen-step { display: none; }
+  .deck-screen[hidden] { display: block !important; }
+  .deck-screen { break-inside: avoid; margin-bottom: 22px; animation: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deck-screen.is-active.slide-forward, .deck-screen.is-active.slide-back { animation: none; }
+  .search-progress-bar span { animation: none; width: 100%; }
+  .skeleton-row { animation: none; }
+  .deck-arrow, .deck-arrow-label { transition: none; }
 }
