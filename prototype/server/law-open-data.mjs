@@ -3,6 +3,7 @@ import { fetchLawText, maskSensitiveUrl } from "./law-http.mjs";
 
 const API_BASE = "https://www.law.go.kr/DRF";
 const OFFICIAL_PAGE = "https://www.law.go.kr/LSW/precInfoP.do";
+const OFFICIAL_STATUTE_PAGE = "https://www.law.go.kr/법령";
 
 // OC가 유효해도 요청 헤더가 부족하면 법제처가 돌려주는 거절 문서.
 // 문구가 IP·도메인 등록 문제로 읽혀 승인 상태를 오해하기 쉬우므로 별도 코드로 구분한다.
@@ -61,6 +62,39 @@ export function parsePrecedentDetail(payload, providerRecordId) {
   return precedent;
 }
 
+/**
+ * The DRF article parameter is the article number padded to four digits followed
+ * by its sub-article number, so 제13조 is "001300".
+ */
+export function articleParameter(articleNo) {
+  const [main, sub = "0"] = String(articleNo).split("-");
+  return `${String(Number(main)).padStart(4, "0")}${String(Number(sub)).padStart(2, "0")}`;
+}
+
+export function parseStatuteArticle(payload, { lawId, articleNo }) {
+  const law = payload?.법령 || payload;
+  const lawName = text(law?.기본정보?.법령명_한글);
+  const enforcedOn = date(law?.기본정보?.시행일자);
+  const units = law?.조문?.조문단위;
+  const rows = Array.isArray(units) ? units : units ? [units] : [];
+  const unit = rows.find((row) => String(row?.조문번호) === String(articleNo)) || rows[0];
+
+  const article = {
+    lawId: String(lawId),
+    articleNo: String(articleNo),
+    lawName,
+    articleTitle: text(unit?.조문제목),
+    // The article text is quoted verbatim; only markup and runs of space go.
+    body: text(String(unit?.조문내용 || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")),
+    enforcedOn,
+    officialUrl: `${OFFICIAL_STATUTE_PAGE}/${encodeURIComponent(lawName.replace(/\s+/g, ""))}/제${articleNo}조`,
+  };
+
+  const missing = ["lawName", "articleTitle", "body", "enforcedOn"].filter((field) => !article[field]);
+  if (missing.length) throw new LawOpenDataError(`LAW_STATUTE_INVALID:${missing.join(",")}`);
+  return article;
+}
+
 export class LawOpenDataClient {
   constructor({ oc, timeoutMs = 30_000, ...http } = {}) {
     if (!oc) throw new LawOpenDataError("LAW_OPEN_DATA_APPROVAL_REQUIRED");
@@ -87,6 +121,13 @@ export class LawOpenDataClient {
       target: "prec", type: "JSON", ID: providerRecordId,
     });
     return { precedent: parsePrecedentDetail(raw, providerRecordId), raw };
+  }
+
+  async fetchStatuteArticle({ lawId, articleNo }) {
+    const raw = await this.#get("lawService.do", {
+      target: "law", type: "JSON", ID: String(lawId), JO: articleParameter(articleNo),
+    });
+    return { article: parseStatuteArticle(raw, { lawId, articleNo }), raw };
   }
 
   async #get(path, parameters) {
