@@ -32,3 +32,30 @@ test("keeps reduced-motion behavior explicit", () => {
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /scroll-behavior:\s*auto/);
 });
+
+test("keeps every result panel in the printed copy", () => {
+  // Saving the result must not save only whichever tab happened to be open.
+  assert.match(css, /@media print[\s\S]*?\[role="tabpanel"\]\[hidden\] \{ display: block !important; \}/);
+  assert.match(css, /@media print[\s\S]*?\.tab-strip \{ display: none; \}/);
+});
+
+test("separates quoted law, applied rule, and generated text by size and weight", () => {
+  // Three kinds of statement share one card. Rendered alike they read as one
+  // voice, which is a trust problem before it is a readability one.
+  const size = (selector) => {
+    const rule = css.slice(css.indexOf(`${selector} {`));
+    return Number(/font-size:\s*([\d.]+)px/.exec(rule.slice(0, rule.indexOf("}")))?.[1]);
+  };
+  const statute = size(".statute-body");
+  const quote = size(".element-quote");
+  const evidence = size(".element-evidence");
+  const note = size(".element-note");
+
+  assert.ok(statute > quote, `statute ${statute} must lead quote ${quote}`);
+  assert.ok(quote > evidence, `quote ${quote} must lead evidence ${evidence}`);
+  assert.ok(evidence > note, `evidence ${evidence} must lead note ${note}`);
+  // The body text the reader has to work through is no longer 11px.
+  assert.ok(note >= 12.5, `generated note ${note} is too small`);
+  // Generated wording carries a label of its own.
+  assert.match(css, /\.ai-tag \{/);
+});

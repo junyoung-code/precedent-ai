@@ -547,62 +547,62 @@ const ANALYSIS_ABSENCE_REASON = {
 };
 
 /**
- * The statute reading, kept below the verified cards and visibly apart from
- * them. The cards are records; this is generated text about what the article
- * asks for, and the two must not be mistaken for one another.
+ * Everything below the verified cards, split so a reader can tell what each
+ * panel is. The statute panel quotes the article; the summary panel is text a
+ * model wrote about it. Kept in separate tabs rather than one long scroll, which
+ * also stops the two from reading as one continuous document.
  */
-function StatuteAnalysis({ state }) {
-  const { loading, statute, elements, analysis, unavailable } = state;
-  if (loading) {
-    return <section className="analysis-section" aria-busy="true"><p className="analysis-status">법조문과 대조하는 중입니다…</p></section>;
-  }
-  if (!statute || !analysis) {
-    return (
-      <section className="analysis-section">
-        <p className="analysis-status">{ANALYSIS_ABSENCE_REASON[unavailable] || ANALYSIS_ABSENCE_REASON.ANALYSIS_API_UNAVAILABLE}</p>
-      </section>
-    );
-  }
+function AnalysisPlaceholder({ state }) {
+  if (state.loading) return <p className="analysis-status" aria-busy="true">법조문과 대조하는 중입니다…</p>;
+  return <p className="analysis-status">{ANALYSIS_ABSENCE_REASON[state.unavailable] || ANALYSIS_ABSENCE_REASON.ANALYSIS_API_UNAVAILABLE}</p>;
+}
 
-  const noteFor = (id) => analysis.elementNotes.find((item) => item.id === id)?.text;
+function StatutePanel({ state }) {
+  const { statute, elements, analysis } = state;
+  if (!statute) return <AnalysisPlaceholder state={state} />;
+  const noteFor = (id) => analysis?.elementNotes.find((item) => item.id === id)?.text;
 
   return (
-    <section className="analysis-section" aria-labelledby="analysis-heading">
-      <div className="analysis-divider" role="separator">
-        <span>여기부터는 AI가 쓴 설명입니다</span>
-      </div>
+    <div className="analysis-card">
+      <blockquote className="statute-body">{statute.body}</blockquote>
+      <p className="statute-source">
+        {statute.lawName} · {statute.enforcedOn} 시행 ·{" "}
+        <a href={statute.officialUrl} target="_blank" rel="noopener noreferrer">조문 원문 <span aria-hidden="true">↗</span></a>
+      </p>
 
-      <div className="analysis-card">
-        <h2 id="analysis-heading">법조문으로 본 회원님 상황</h2>
-        <blockquote className="statute-body">{statute.body}</blockquote>
-        <p className="statute-source">
-          {statute.lawName} · {statute.enforcedOn} 시행 ·{" "}
-          <a href={statute.officialUrl} target="_blank" rel="noopener noreferrer">조문 원문 <span aria-hidden="true">↗</span></a>
-        </p>
+      <ul className="element-list">
+        {elements.map((element) => (
+          <li key={element.id} className={`element-item is-${element.mention}`}>
+            <div className="element-head">
+              <strong>{element.label}</strong>
+              <span className={`element-mention is-${element.mention}`}>{MENTION_LABEL[element.mention]}</span>
+            </div>
+            <p className="element-quote">“{element.statuteQuote}”</p>
+            <p className="element-evidence"><span aria-hidden="true">▸</span> {element.evidence}</p>
+            {noteFor(element.id) && (
+              <p className="element-note"><span className="ai-tag">AI</span> {noteFor(element.id)}</p>
+            )}
+          </li>
+        ))}
+      </ul>
 
-        <ul className="element-list">
-          {elements.map((element) => (
-            <li key={element.id} className={`element-item is-${element.mention}`}>
-              <div className="element-head">
-                <strong>{element.label}</strong>
-                <span className={`element-mention is-${element.mention}`}>{MENTION_LABEL[element.mention]}</span>
-              </div>
-              <p className="element-quote">“{element.statuteQuote}”</p>
-              <p className="element-evidence">{element.evidence}</p>
-              {noteFor(element.id) && <p className="element-note">{noteFor(element.id)}</p>}
-            </li>
-          ))}
-        </ul>
+      <p className="analysis-caution">
+        <strong>각 항목은 회원님이 적은 내용에 그 요건이 언급되었는지만 표시한 것입니다.</strong>
+        {" "}요건이 실제로 충족되는지는 증거를 확인한 뒤 법원이 판단합니다.
+      </p>
+    </div>
+  );
+}
 
-        <p className="analysis-caution">
-          <strong>각 항목은 회원님이 적은 내용에 그 요건이 언급되었는지만 표시한 것입니다.</strong>
-          {" "}요건이 실제로 충족되는지는 증거를 확인한 뒤 법원이 판단합니다.
-        </p>
-      </div>
+function AiSummaryPanel({ state }) {
+  const { analysis } = state;
+  if (!analysis) return <AnalysisPlaceholder state={state} />;
 
+  return (
+    <>
       {analysis.overview.length > 0 && (
         <div className="analysis-card">
-          <h3>AI 종합 설명</h3>
+          <h3>회원님 상황 정리</h3>
           {analysis.overview.map((text) => <p key={text}>{text}</p>)}
           {analysis.precedentNotes.length > 0 && (
             <ul className="analysis-precedent-notes">
@@ -622,9 +622,78 @@ function StatuteAnalysis({ state }) {
           <p className="source-reminder">자료를 정리하는 방법에 관한 안내이며, 법적 조치를 권하는 것이 아닙니다.</p>
         </div>
       )}
-    </section>
+    </>
   );
 }
+
+/**
+ * Moves between the verified records and the generated text. Printing has to
+ * show every panel, so the hidden ones stay in the document and are hidden with
+ * CSS rather than dropped from the tree.
+ */
+function ResultTabs({ precedents, resultCount, analysisState }) {
+  const [active, setActive] = useState("precedents");
+  const tabRefs = useRef({});
+  const state = analysisState || { loading: false, statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_DISABLED" };
+
+  const tabs = [
+    { id: "precedents", label: "닮은 판례", badge: resultCount > 0 ? String(resultCount) : null, generated: false },
+    { id: "statute", label: "법조문으로 본 내 상황", badge: null, generated: true },
+    { id: "summary", label: "AI 설명과 다음 단계", badge: null, generated: true },
+  ];
+
+  function onKeyDown(event) {
+    const order = tabs.map((tab) => tab.id);
+    const index = order.indexOf(active);
+    const next = event.key === "ArrowRight" ? index + 1 : event.key === "ArrowLeft" ? index - 1 : null;
+    if (next === null) return;
+    event.preventDefault();
+    const id = order[(next + order.length) % order.length];
+    setActive(id);
+    tabRefs.current[id]?.focus();
+  }
+
+  return (
+    <div className="result-tabs">
+      <div className="tab-strip" role="tablist" aria-label="결과 보기" onKeyDown={onKeyDown}>
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            id={`tab-${tab.id}`}
+            aria-selected={active === tab.id}
+            aria-controls={`panel-${tab.id}`}
+            tabIndex={active === tab.id ? 0 : -1}
+            ref={(node) => { tabRefs.current[tab.id] = node; }}
+            className={`tab-button ${active === tab.id ? "is-active" : ""} ${tab.generated ? "is-generated" : ""}`}
+            onClick={() => setActive(tab.id)}
+          >
+            {tab.generated && <span className="tab-ai" aria-hidden="true">AI</span>}
+            {tab.label}
+            {tab.badge && <span className="tab-badge">{tab.badge}</span>}
+            {tab.generated && state.loading && <span className="tab-spinner" aria-label="불러오는 중" />}
+          </button>
+        ))}
+      </div>
+
+      <div className="tab-panels">
+        <div role="tabpanel" id="panel-precedents" aria-labelledby="tab-precedents" hidden={active !== "precedents"}>
+          {precedents}
+        </div>
+        <div role="tabpanel" id="panel-statute" aria-labelledby="tab-statute" hidden={active !== "statute"}>
+          <p className="tab-lead">AI가 아래 법조문을 회원님이 적은 내용과 하나씩 맞춰본 것입니다.</p>
+          <StatutePanel state={state} />
+        </div>
+        <div role="tabpanel" id="panel-summary" aria-labelledby="tab-summary" hidden={active !== "summary"}>
+          <p className="tab-lead">AI가 쓴 설명입니다. 위 판례 탭의 기록과 성격이 다릅니다.</p>
+          <AiSummaryPanel state={state} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function ResultsView({ description, results, coverage, searchFailed, onRetry, onHome, resultsStartRef, analysisState }) {
   const [showAll, setShowAll] = useState(false);
@@ -661,22 +730,26 @@ function ResultsView({ description, results, coverage, searchFailed, onRetry, on
       </div>
       {!searchFailed && <Coverage resultCount={results.length} coverage={coverage} />}
 
-      {searchFailed ? <ErrorResults onRetry={onRetry} /> : results.length === 0 ? (
-        <EmptyResults onHome={onHome} availableCount={coverage.availableCount} />
-      ) : (
-        <div className="results-list">
-          {visibleResults.map((result, index) => <PrecedentCard result={result} rank={index + 1} key={result.id} />)}
-          {!showAll && results.length > 3 && (
-            <button className="show-more" type="button" onClick={() => setShowAll(true)}>
-              판례 {results.length - 3}건 더 보기 <span aria-hidden="true">↓</span>
-            </button>
+      {searchFailed ? <ErrorResults onRetry={onRetry} /> : (
+        <ResultTabs
+          precedents={(
+            results.length === 0
+              ? <EmptyResults onHome={onHome} availableCount={coverage.availableCount} />
+              : (
+                <div className="results-list">
+                  {visibleResults.map((result, index) => <PrecedentCard result={result} rank={index + 1} key={result.id} />)}
+                  {!showAll && results.length > 3 && (
+                    <button className="show-more" type="button" onClick={() => setShowAll(true)}>
+                      판례 {results.length - 3}건 더 보기 <span aria-hidden="true">↓</span>
+                    </button>
+                  )}
+                </div>
+              )
           )}
-        </div>
+          resultCount={results.length}
+          analysisState={analysisState}
+        />
       )}
-
-      {/* Runs whether or not a precedent cleared the bar: an empty search is
-          exactly when the reader has the least to go on. */}
-      {!searchFailed && analysisState && <StatuteAnalysis state={analysisState} />}
     </section>
   );
 }

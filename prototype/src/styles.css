@@ -500,41 +500,84 @@ button { color: inherit; }
   .ai-summary-badge, .source-reminder { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
-/* The AI layer. Held visually apart from the verified cards above it: those are
-   records with official links, this is generated text about the statute. */
-.analysis-section { width: 100%; margin-top: 26px; }
-.analysis-divider { position: relative; margin: 0 0 18px; text-align: center; }
-.analysis-divider::before { content: ""; position: absolute; inset: 50% 0 auto; height: 1px; background: repeating-linear-gradient(to right, #d8d9e4 0 6px, transparent 6px 12px); }
-.analysis-divider span { position: relative; padding: 0 14px; background: #fafafd; color: #8b8d99; font-size: 10px; font-weight: 700; }
-.analysis-status { margin: 0; padding: 18px; border: 1px dashed #d9dae6; border-radius: 14px; background: #f7f8fc; color: #6f7280; font-size: 12px; text-align: center; }
-.analysis-card { margin-top: 12px; padding: 20px; border: 1px solid #e2e4ee; border-radius: 16px; background: #f7f8fc; }
-.analysis-card h2 { margin: 0; font-size: 16px; color: #33364a; }
-.analysis-card h3 { margin: 0 0 10px; font-size: 13px; color: #33364a; }
-.analysis-card p { margin: 0 0 8px; color: #4f5262; font-size: 12px; line-height: 1.7; }
-.statute-body { margin: 12px 0 0; padding: 13px 15px; border-left: 3px solid #8b90b4; border-radius: 0 10px 10px 0; background: #fff; color: #33364a; font-size: 12px; line-height: 1.75; }
-.statute-source { margin: 8px 0 0 !important; color: #7b7e8d; font-size: 10px; }
+/* ── Result tabs ─────────────────────────────────────────────────────────────
+   Verified records and generated text live in separate panels so neither reads
+   as a continuation of the other, and one search stops being a five-screen
+   scroll. Hidden panels stay in the document: printing has to show them all. */
+.result-tabs { margin-top: 18px; }
+.tab-strip { display: flex; gap: 6px; border-bottom: 1px solid #e3e0eb; overflow-x: auto; scrollbar-width: none; }
+.tab-strip::-webkit-scrollbar { display: none; }
+.tab-button { position: relative; flex: 0 0 auto; height: 44px; padding: 0 16px; display: inline-flex; align-items: center; gap: 7px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #7c7486; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.tab-button:hover { color: #4f3020; }
+.tab-button.is-active { color: #2c2029; border-bottom-color: #4f3020; }
+.tab-button.is-generated.is-active { border-bottom-color: #7a80a8; }
+.tab-ai { padding: 2px 5px; border-radius: 4px; background: #e7e9f3; color: #5b6086; font-size: 9px; font-weight: 800; }
+.tab-button.is-active .tab-ai { background: #5b6086; color: #fff; }
+.tab-badge { padding: 1px 6px; border-radius: 999px; background: #efe7e1; color: #6b5344; font-size: 10px; font-weight: 800; }
+.tab-button.is-active .tab-badge { background: #4f3020; color: #fff; }
+.tab-spinner { width: 11px; height: 11px; border: 2px solid #cfd3e6; border-top-color: #5b6086; border-radius: 50%; animation: tab-spin .7s linear infinite; }
+@keyframes tab-spin { to { transform: rotate(360deg); } }
+.tab-panels { padding-top: 18px; }
+.tab-lead { max-width: 880px; margin: 0 0 12px; color: #6f6879; font-size: 12px; }
+
+/* ── The AI layer ────────────────────────────────────────────────────────────
+   Three kinds of text share these cards and must not look alike: the statute is
+   quoted law, the evidence line is a rule this service applied, and the note is
+   a model's wording. Size, weight and colour carry that difference. */
+.analysis-status { max-width: 880px; margin: 0; padding: 22px; border: 1px dashed #d9dae6; border-radius: 14px; background: #f7f8fc; color: #5f6270; font-size: 13px; text-align: center; }
+.analysis-card { max-width: 880px; margin-top: 12px; padding: 22px; border: 1px solid #e2e4ee; border-radius: 16px; background: #f8f9fd; }
+.analysis-card:first-child { margin-top: 0; }
+.analysis-card h3 { margin: 0 0 12px; font-size: 15px; color: #2b2e3f; }
+.analysis-card p { margin: 0 0 10px; color: #3f4252; font-size: 13.5px; line-height: 1.8; }
+
+/* The law itself: the largest and darkest text in the panel. */
+.statute-body { margin: 0; padding: 16px 18px; border-left: 3px solid #6f76a3; border-radius: 0 10px 10px 0; background: #fff; color: #23263a; font-size: 14.5px; line-height: 1.85; }
+.statute-source { margin: 10px 0 0 !important; color: #6f7280; font-size: 11.5px !important; }
 .statute-source a { color: #4f3020; font-weight: 700; }
-.element-list { margin: 16px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
-.element-item { padding: 13px 15px; border: 1px solid #e6e8f1; border-radius: 12px; background: #fff; }
-.element-item.is-present { border-left: 3px solid #4a8f6d; }
-.element-item.is-absent { border-left: 3px solid #b06a4f; }
-.element-item.is-unclear { border-left: 3px solid #b9bccd; }
-.element-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.element-head strong { color: #2f3244; font-size: 12px; }
-.element-mention { flex: 0 0 auto; padding: 3px 8px; border-radius: 999px; font-size: 9px; font-weight: 800; }
-.element-mention.is-present { background: #e6f2ec; color: #2f6b50; }
-.element-mention.is-absent { background: #f6e9e3; color: #8a4d33; }
-.element-mention.is-unclear { background: #eceef5; color: #6a6d7e; }
-.element-quote { margin: 8px 0 0 !important; color: #6a6d7e; font-size: 11px; font-style: italic; }
-.element-evidence { margin: 5px 0 0 !important; color: #4f5262; font-size: 11px; }
-.element-note { margin: 7px 0 0 !important; padding-top: 7px; border-top: 1px solid #eef0f6; color: #5e6273; font-size: 11px; }
-.analysis-caution { margin: 14px 0 0 !important; padding: 11px 13px; border-radius: 10px; background: #eceef5; color: #4a4d5e !important; font-size: 11px !important; }
-.analysis-precedent-notes { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
-.analysis-precedent-notes li { padding-left: 11px; border-left: 2px solid #b6bad2; color: #4f5262; font-size: 11px; line-height: 1.65; }
-.analysis-case { display: inline-block; margin-right: 5px; color: #4f3020; font-weight: 800; font-size: 10px; }
-.next-steps { margin: 0; padding-left: 17px; display: grid; gap: 7px; color: #4f5262; font-size: 12px; line-height: 1.65; }
+
+.element-list { margin: 18px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.element-item { padding: 16px 18px; border: 1px solid #e6e8f1; border-radius: 12px; background: #fff; }
+.element-item.is-present { border-left: 3px solid #3f8464; }
+.element-item.is-absent { border-left: 3px solid #a85f45; }
+.element-item.is-unclear { border-left: 3px solid #a9adc2; }
+.element-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.element-head strong { color: #23263a; font-size: 14px; }
+.element-mention { flex: 0 0 auto; padding: 4px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 800; }
+.element-mention.is-present { background: #e2f0e9; color: #23684a; }
+.element-mention.is-absent { background: #f6e7e0; color: #7d4128; }
+.element-mention.is-unclear { background: #e9ebf3; color: #5b5f72; }
+/* Quoted law — dark, spaced, and marked as a quotation. */
+.element-quote { margin: 11px 0 0 !important; color: #2f3348 !important; font-size: 13.5px !important; line-height: 1.75; }
+/* What this service worked out from the rules. */
+.element-evidence { margin: 9px 0 0 !important; color: #55596b !important; font-size: 13px !important; line-height: 1.7; }
+.element-evidence span { margin-right: 3px; color: #8e93a8; }
+/* A model's wording — lighter, smaller, and labelled. */
+.element-note { margin: 11px 0 0 !important; padding-top: 11px; border-top: 1px dashed #e7e9f2; color: #64687b !important; font-size: 12.5px !important; line-height: 1.75; }
+.ai-tag { display: inline-block; margin-right: 6px; padding: 1px 5px; border-radius: 4px; background: #e7e9f3; color: #5b6086; font-size: 9px; font-weight: 800; vertical-align: 1px; }
+
+.analysis-caution { margin: 16px 0 0 !important; padding: 13px 15px; border-radius: 10px; background: #ecedf5; color: #3f4252 !important; font-size: 12.5px !important; }
+.analysis-precedent-notes { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.analysis-precedent-notes li { padding-left: 13px; border-left: 2px solid #b6bad2; color: #3f4252; font-size: 13px; line-height: 1.75; }
+.analysis-case { display: inline-block; margin-right: 6px; color: #4f3020; font-weight: 800; font-size: 11px; }
+.next-steps { margin: 0; padding-left: 19px; display: grid; gap: 9px; color: #3f4252; font-size: 13.5px; line-height: 1.75; }
+
+/* The precedent card carried the same too-small body text. */
+.summary-list p { font-size: 12.5px !important; line-height: 1.8 !important; color: #43464f !important; }
+.summary-list span { font-size: 10px !important; }
+.disposition-order { font-size: 13.5px !important; line-height: 1.8 !important; }
+.disposition-meaning { font-size: 12.5px !important; line-height: 1.75 !important; color: #55596b !important; }
+.comparison-box li, .comparison-box p { font-size: 12.5px !important; line-height: 1.7 !important; }
 
 @media (max-width: 620px) {
-  .analysis-card { padding: 15px; }
-  .element-head { flex-direction: column; gap: 5px; }
+  .analysis-card { padding: 16px; }
+  .element-item { padding: 14px; }
+  .element-head { flex-direction: column; gap: 6px; }
+  .tab-button { height: 42px; padding: 0 12px; font-size: 12px; }
+}
+
+/* Saving the result must not save only whichever tab happened to be open. */
+@media print {
+  .tab-strip { display: none; }
+  .tab-panels [role="tabpanel"][hidden] { display: block !important; }
+  .tab-panels [role="tabpanel"] { break-inside: avoid; margin-bottom: 18px; }
 }

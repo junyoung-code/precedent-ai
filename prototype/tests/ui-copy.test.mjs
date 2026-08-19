@@ -143,3 +143,17 @@ test("requires explicit external AI consent and uses the private intake client",
   assert.match(appSource, /result\.summary\?\.length/);
   assert.match(appSource, /검색 서버에 연결하지 못했습니다/);
 });
+
+test("moves between records and generated text as labelled tabs", () => {
+  assert.match(appSource, /role="tablist"/);
+  assert.match(appSource, /role="tabpanel"/);
+  assert.match(appSource, /aria-selected=\{active === tab\.id\}/);
+  // Arrow keys move the strip, and the roving tabindex keeps one stop in it.
+  assert.match(appSource, /event\.key === "ArrowRight"/);
+  assert.match(appSource, /tabIndex=\{active === tab\.id \? 0 : -1\}/);
+  // Hidden panels stay in the document so printing can reveal them.
+  assert.match(appSource, /hidden=\{active !== "precedents"\}/);
+  // The two AI tabs say so on the tab itself, not only inside the panel.
+  assert.match(appSource, /tab\.generated && <span className="tab-ai"/);
+  assert.match(appSource, /AI가 쓴 설명입니다\. 위 판례 탭의 기록과 성격이 다릅니다/);
+});
