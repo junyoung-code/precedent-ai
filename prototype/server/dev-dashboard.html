@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>API 사용량 · 판례 AI 개발자용</title>
+<style>
+  :root { color-scheme: light; --line: #e3e5ee; --ink: #23263a; --dim: #6f7280; --warm: #6b4327; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 22px 60px; background: #f6f7fb; color: var(--ink);
+         font: 14px/1.6 "Pretendard", -apple-system, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 19px; }
+  .sub { margin: 0 0 22px; color: var(--dim); font-size: 12.5px; }
+  .warn { margin: 0 0 20px; padding: 13px 15px; border: 1px solid #e4d2c2; border-radius: 10px;
+          background: #fdf1e6; color: var(--warm); font-size: 12.5px; }
+  .warn code { background: #f5e6d8; padding: 1px 5px; border-radius: 4px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .card { padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+  .card h2 { margin: 0 0 6px; font-size: 11.5px; font-weight: 700; color: var(--dim); letter-spacing: .02em; }
+  .big { font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
+  .big.unknown { font-size: 15px; font-weight: 700; color: var(--dim); }
+  .note { margin-top: 4px; font-size: 11.5px; color: var(--dim); }
+  section { margin-bottom: 26px; }
+  section > h2 { margin: 0 0 10px; font-size: 14px; }
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; white-space: nowrap; }
+  th, td { padding: 10px 13px; text-align: right; border-bottom: 1px solid #eef0f6; }
+  th:first-child, td:first-child { text-align: left; }
+  th { background: #fafbff; color: var(--dim); font-weight: 700; font-size: 11.5px; }
+  tr:last-child td { border-bottom: 0; }
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 5px; background: #eef0f8;
+         color: #5b6086; font-size: 10.5px; font-weight: 700; }
+  .miss { color: var(--warm); font-weight: 700; }
+  .bar { display: inline-block; height: 7px; border-radius: 4px; background: #6f76a3; vertical-align: middle; }
+  .controls { display: flex; gap: 8px; align-items: center; margin-bottom: 18px; }
+  button { padding: 6px 13px; border: 1px solid var(--line); border-radius: 8px; background: #fff;
+           font: inherit; font-size: 12.5px; cursor: pointer; }
+  button.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .empty { padding: 26px; text-align: center; color: var(--dim); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>API 사용량</h1>
+  <p class="sub">개발자용입니다. 사용자 입력은 여기에 기록되지 않습니다 — 모델 이름과 토큰 수뿐입니다.</p>
+
+  <div class="controls">
+    <button data-days="1">오늘</button>
+    <button data-days="7">7일</button>
+    <button data-days="30" class="on">30일</button>
+    <span class="sub" id="updated" style="margin:0 0 0 auto"></span>
+  </div>
+
+  <div id="corpus"></div>
+  <div id="warn"></div>
+  <div class="cards" id="cards"></div>
+
+  <section>
+    <h2>모델별</h2>
+    <div class="scroll"><table id="models"></table></div>
+  </section>
+
+  <section>
+    <h2>일자별 <span class="sub">(한국시간)</span></h2>
+    <div class="scroll"><table id="daily"></table></div>
+  </section>
+</main>
+
+<script>
+const num = (n) => Number(n || 0).toLocaleString("ko-KR");
+const won = (n) => n == null ? null : Math.round(n).toLocaleString("ko-KR") + "원";
+const PURPOSE = { search_embedding: "검색 임베딩", case_analysis: "법조문 분석", summary: "판례 요약",
+                  backfill_embedding: "임베딩 백필", other: "기타" };
+let days = 30;
+
+function card(title, value, note, unknown) {
+  return `<div class="card"><h2>${title}</h2>
+    <div class="big${unknown ? " unknown" : ""}">${value}</div>
+    ${note ? `<div class="note">${note}</div>` : ""}</div>`;
+}
+
+async function load() {
+  const data = await (await fetch(`/api/dev/usage?days=${days}`)).json();
+  const perSearch = won(data.perSearchKrw);
+  const c = data.corpus;
+
+  // The failure this exists to catch: link checks lapse after 24 hours, the
+  // hybrid search silently drops to keyword matching, and the cards keep coming.
+  document.getElementById("corpus").innerHTML = !c ? "" : c.semanticSearchReady
+    ? `<div class="warn" style="border-color:#cde0d3;background:#f0f7f2;color:#2f5c44">
+         의미 검색 정상 &mdash; 판례 ${num(c.searchable)}건 중 ${num(c.fresh)}건이 24시간 내 링크 확인됨,
+         임베딩 ${num(c.embedded)}건.</div>`
+    : `<div class="warn"><strong>의미 검색이 지금 꺼져 있습니다.</strong>
+         링크 확인이 24시간을 넘긴 판례가 ${num(c.staleCount)}건이라 검색이 키워드 방식으로 떨어집니다.
+         화면에는 판례가 그대로 나오므로 겉으로는 아무 문제가 없어 보입니다.
+         마지막 확인 ${c.newestCheck ? new Date(c.newestCheck).toLocaleString("ko-KR") : "기록 없음"} &middot;
+         <code>npm run verify:sources</code> 로 되살립니다.</div>`;
+
+  document.getElementById("warn").innerHTML = data.unpricedModels > 0
+    ? `<div class="warn"><strong>단가가 설정되지 않은 모델이 ${data.unpricedModels}개 있습니다.</strong>
+       금액은 그만큼 빠진 <em>하한선</em>입니다. 실제 단가는
+       platform.openai.com &rarr; Usage 에서 확인해 <code>prototype/config/model-prices.json</code> 에 적으십시오.
+       <code>web_search</code> 도구 호출료는 API 응답에 나오지 않아 요금 페이지에서만 알 수 있습니다.</div>`
+    : "";
+
+  document.getElementById("cards").innerHTML = [
+    card("검색 1회당", perSearch || "단가 미설정",
+         perSearch ? `환율 ${num(data.krwPerUsd)}원 가정` : "가격표를 채우면 나옵니다", !perSearch),
+    card(`${data.days}일 합계`, won(data.totalKrw) || "단가 미설정",
+         data.totalKrw == null ? "단가 있는 것만: " + (won(data.pricedOnlyUsd * data.krwPerUsd) || "0원") : "", data.totalKrw == null),
+    card("검색 횟수", num(data.searches), `${data.days}일 기준`),
+    card("웹 검색 호출", num(data.byModel.reduce((t, r) => t + r.webSearches, 0)), "도구 호출료 별도"),
+  ].join("");
+
+  const models = document.getElementById("models");
+  models.innerHTML = data.byModel.length === 0
+    ? `<tr><td class="empty">아직 기록이 없습니다. 검색을 한 번 해보십시오.</td></tr>`
+    : `<tr><th>용도</th><th>모델</th><th>호출</th><th>실패</th><th>입력</th><th>캐시</th><th>출력</th><th>웹</th><th>평균</th><th>금액</th></tr>`
+      + data.byModel.map((r) => `<tr>
+          <td><span class="tag">${PURPOSE[r.purpose] || r.purpose}</span></td>
+          <td>${r.model}</td><td>${num(r.calls)}</td>
+          <td>${r.failed > 0 ? `<span class="miss">${num(r.failed)}</span>` : "0"}</td>
+          <td>${num(r.inputTokens)}</td><td>${num(r.cachedInputTokens)}</td><td>${num(r.outputTokens)}</td>
+          <td>${num(r.webSearches)}</td><td>${num(r.avgLatencyMs)}ms</td>
+          <td>${r.priced ? won(r.usd * data.krwPerUsd) : '<span class="miss">단가 없음</span>'}</td>
+        </tr>`).join("");
+
+  const peak = Math.max(1, ...data.daily.map((d) => d.inputTokens + d.outputTokens));
+  const daily = document.getElementById("daily");
+  daily.innerHTML = data.daily.length === 0
+    ? `<tr><td class="empty">아직 기록이 없습니다.</td></tr>`
+    : `<tr><th>날짜</th><th>검색</th><th>입력</th><th>출력</th><th>웹</th><th style="width:34%">토큰</th></tr>`
+      + data.daily.map((d) => {
+          const total = d.inputTokens + d.outputTokens;
+          return `<tr><td>${d.day}</td><td>${num(d.searches)}</td>
+            <td>${num(d.inputTokens)}</td><td>${num(d.outputTokens)}</td><td>${num(d.webSearches)}</td>
+            <td><span class="bar" style="width:${Math.round((total / peak) * 100)}%"></span></td></tr>`;
+        }).join("");
+
+  document.getElementById("updated").textContent = new Date().toLocaleTimeString("ko-KR") + " 갱신";
+}
+
+for (const button of document.querySelectorAll("[data-days]")) {
+  button.addEventListener("click", () => {
+    days = Number(button.dataset.days);
+    document.querySelectorAll("[data-days]").forEach((other) => other.classList.toggle("on", other === button));
+    load();
+  });
+}
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>

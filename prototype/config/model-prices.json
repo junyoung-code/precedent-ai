@@ -1,0 +1,21 @@
+{
+  "_읽어주세요": "단가는 platform.openai.com/docs/pricing 에서 보고 직접 채우십시오. null인 항목은 대시보드에서 '단가 미설정'으로 표시되고 토큰 수만 나옵니다. 추측한 값을 넣으면 대시보드가 확신에 찬 거짓말을 합니다.",
+  "krwPerUsd": 1400,
+  "_krwPerUsd": "환율은 가정값입니다. 카드 청구 환율과 다릅니다.",
+  "webSearchPerCall": null,
+  "_webSearchPerCall": "web_search 도구 1회 호출당 USD. API 응답에 안 나오므로 요금 페이지에서 확인해야 합니다.",
+  "models": {
+    "text-embedding-3-small": {
+      "inputPerMillion": 0.02,
+      "outputPerMillion": 0
+    },
+    "gpt-5.6-terra": {
+      "inputPerMillion": null,
+      "cachedInputPerMillion": null,
+      "outputPerMillion": null
+    },
+    "gpt-5.6-sol": { "inputPerMillion": null, "cachedInputPerMillion": null, "outputPerMillion": null },
+    "gpt-5.6-luna": { "inputPerMillion": null, "cachedInputPerMillion": null, "outputPerMillion": null },
+    "gpt-5-mini": { "inputPerMillion": null, "cachedInputPerMillion": null, "outputPerMillion": null }
+  }
+}

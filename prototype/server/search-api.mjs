@@ -1,4 +1,5 @@
 import http from "node:http";
+import { readFile } from "node:fs/promises";
 import { normalizeSearchQuery, searchPrecedents } from "./search-precedents.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
 import { validateGroundedAnalysis } from "./grounded-analysis.mjs";
@@ -6,6 +7,7 @@ import { buildWebSearchQuery, validateWebCases, verifyWebCases } from "./web-cas
 import { mapFactsToArticle13 } from "./statute-elements.mjs";
 import { COMMUNICATION_OBSCENITY_ARTICLE, readStatuteArticle } from "./statutes.mjs";
 import { buildIntakeQuestions } from "./intake-questions.mjs";
+import { readCorpusHealth, readModelPrices, readUsageSummary, recordApiUsage } from "./api-usage.mjs";
 import {
   answerIntakeSession,
   createIntakeSession,
@@ -56,13 +58,22 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, verifyWeb
   const facts = extractFacts(redactedText);
   const elements = mapFactsToArticle13(facts);
   let payload;
+  const started = Date.now();
   try {
     const result = await analysisClient.analyze({
       statute, elements, description: redactedText, precedents,
       searchQuery: buildWebSearchQuery(facts),
     });
     payload = result.analysis;
+    await recordApiUsage({
+      pool, purpose: "case_analysis", model: analysisClient.model,
+      usage: result.usage, webSearches: result.webSearches, latencyMs: Date.now() - started,
+    });
   } catch (error) {
+    await recordApiUsage({
+      pool, purpose: "case_analysis", model: analysisClient.model,
+      latencyMs: Date.now() - started, ok: false,
+    });
     return { analysis: null, unavailable: error.code || "ANALYSIS_API_UNAVAILABLE" };
   }
 
@@ -83,6 +94,20 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, verifyWeb
   };
 }
 
+/**
+ * Wraps the embedding client so a search writes down what it spent.
+ *
+ * The client is handed to searchPrecedents, which does not know or care about
+ * billing, so the hook goes on the client rather than into the search.
+ */
+function meteredEmbeddingClient({ client, pool }) {
+  if (!client) return null;
+  client.onUsage = ({ model, usage, latencyMs, ok }) => {
+    void recordApiUsage({ pool, purpose: "search_embedding", model, usage, latencyMs, ok });
+  };
+  return client;
+}
+
 export function createSearchApiServer({
   pool,
   search = searchPrecedents,
@@ -92,12 +117,29 @@ export function createSearchApiServer({
   extractFacts = extractFactTags,
   buildQuestions = buildIntakeQuestions,
   verifyWeb = verifyWebCases,
+  // Off unless asked for. It is a window onto spending, not something a
+  // deployed service should answer to anyone who guesses the path.
+  devDashboard = false,
 }) {
   return http.createServer(async (request, response) => {
     const url = new URL(request.url, "http://localhost");
     if (request.method === "GET" && url.pathname === "/api/health") {
       return sendJson(response, 200, { ok: true });
     }
+    if (devDashboard && request.method === "GET" && url.pathname === "/dev/usage") {
+      const page = await readFile(new URL("./dev-dashboard.html", import.meta.url), "utf8");
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      return response.end(page);
+    }
+    if (devDashboard && request.method === "GET" && url.pathname === "/api/dev/usage") {
+      const prices = await readModelPrices();
+      const [usage, corpus] = await Promise.all([
+        readUsageSummary({ pool, days: url.searchParams.get("days"), prices }),
+        readCorpusHealth({ pool }),
+      ]);
+      return sendJson(response, 200, { ...usage, corpus });
+    }
+
     try {
       if (request.method === "POST" && url.pathname === "/api/intake") {
         const body = await readJson(request);
@@ -129,7 +171,7 @@ export function createSearchApiServer({
           const session = await intakeSessions.getIntakeSessionForCompletion({ pool, sessionId });
           const query = [session.redactedText, ...Object.values(session.answers)].join("\n");
           const normalized = normalizeSearchQuery(query, body.limit);
-          const requestEmbeddingClient = body.allowExternalAi === true ? embeddingClient : null;
+          const requestEmbeddingClient = body.allowExternalAi === true ? meteredEmbeddingClient({ client: embeddingClient, pool }) : null;
           const result = await search({ pool, query: normalized.text, limit: normalized.limit, embeddingClient: requestEmbeddingClient });
           return sendJson(response, 200, result);
         } finally {
@@ -161,7 +203,7 @@ export function createSearchApiServer({
       }
       const body = await readJson(request);
       const normalized = normalizeSearchQuery(body.query, body.limit);
-      const requestEmbeddingClient = body.allowExternalAi === true ? embeddingClient : null;
+      const requestEmbeddingClient = body.allowExternalAi === true ? meteredEmbeddingClient({ client: embeddingClient, pool }) : null;
       const result = await search({
         pool,
         query: normalized.text,

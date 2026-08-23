@@ -7,16 +7,20 @@ function embeddingError(code, message) {
 }
 
 export class OpenAiEmbeddingClient {
-  constructor({ apiKey, model = DEFAULT_EMBEDDING_MODEL, endpoint = DEFAULT_ENDPOINT, fetchImpl = fetch } = {}) {
+  constructor({ apiKey, model = DEFAULT_EMBEDDING_MODEL, endpoint = DEFAULT_ENDPOINT, fetchImpl = fetch, onUsage = null } = {}) {
     if (!apiKey) throw embeddingError("OPENAI_API_KEY_REQUIRED", "OpenAI API 키가 필요합니다.");
     this.apiKey = apiKey;
     this.model = model;
     this.endpoint = endpoint;
     this.fetchImpl = fetchImpl;
+    // Reports what the call used. embed() still returns just the vector, so a
+    // caller that does not care about the bill is unaffected.
+    this.onUsage = typeof onUsage === "function" ? onUsage : null;
   }
 
   async embed(input) {
     let response;
+    const started = Date.now();
     try {
       response = await this.fetchImpl(this.endpoint, {
         method: "POST",
@@ -33,14 +37,17 @@ export class OpenAiEmbeddingClient {
         signal: AbortSignal.timeout(20_000),
       });
     } catch (error) {
+      this.#report(null, Date.now() - started, false);
       throw embeddingError("EMBEDDING_API_UNAVAILABLE", `임베딩 API를 호출할 수 없습니다: ${error.name}`);
     }
 
     if (!response.ok) {
+      this.#report(null, Date.now() - started, false);
       throw embeddingError("EMBEDDING_API_UNAVAILABLE", `임베딩 API가 ${response.status}로 응답했습니다.`);
     }
 
     const payload = await response.json();
+    this.#report(payload?.usage, Date.now() - started, true);
     const vector = payload?.data?.[0]?.embedding;
     if (!Array.isArray(vector)
       || vector.length !== EMBEDDING_DIMENSIONS
@@ -48,6 +55,14 @@ export class OpenAiEmbeddingClient {
       throw embeddingError("EMBEDDING_RESPONSE_INVALID", "임베딩 응답 형식이 올바르지 않습니다.");
     }
     return vector;
+  }
+
+  #report(usage, latencyMs, ok) {
+    if (!this.onUsage) return;
+    // Bookkeeping never breaks the call it is measuring.
+    try {
+      this.onUsage({ model: this.model, usage: usage || null, latencyMs, ok });
+    } catch { /* ignore */ }
   }
 }
 

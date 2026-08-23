@@ -629,3 +629,66 @@ test("POST /api/analysis sends the model a generalized query, not the user's sen
   assert.equal(received.searchQuery, "게임 채팅 성적 욕설 패드립 통매음 통신매체이용음란");
   assert.equal(received.searchQuery.includes("니애미"), false);
 });
+
+test("the usage dashboard stays shut unless it is asked for", async (t) => {
+  // It reports spending, which is not something a deployed service should hand
+  // to whoever guesses the path.
+  const pool = { query: async () => ({ rows: [] }) };
+  const closed = createSearchApiServer({ pool });
+  await new Promise((resolve) => closed.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => closed.close(resolve)));
+  for (const path of ["/dev/usage", "/api/dev/usage"]) {
+    const response = await fetch(`http://127.0.0.1:${closed.address().port}${path}`);
+    assert.equal(response.status, 404, path);
+  }
+
+  const open = createSearchApiServer({ pool, devDashboard: true });
+  await new Promise((resolve) => open.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => open.close(resolve)));
+  const page = await fetch(`http://127.0.0.1:${open.address().port}/dev/usage`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /API 사용량/);
+});
+
+test("a search writes down what it spent, without writing down the search", async (t) => {
+  const written = [];
+  const pool = {
+    query: async (sql, values) => {
+      if (String(sql).includes("INSERT INTO api_usage")) written.push(values);
+      return { rows: [] };
+    },
+  };
+  const embeddingClient = {
+    model: "text-embedding-3-small",
+    onUsage: null,
+    async embed() {
+      this.onUsage?.({ model: this.model, usage: { input_tokens: 61 }, latencyMs: 120, ok: true });
+      return new Array(1536).fill(0.1);
+    },
+  };
+  const server = createSearchApiServer({
+    pool,
+    embeddingClient,
+    search: async ({ embeddingClient: client }) => {
+      if (client) await client.embed("x");
+      return { results: [] };
+    },
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const port = server.address().port;
+
+  const post = (body) => fetch(`http://127.0.0.1:${port}/api/search`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+
+  await post({ query: "게임 채팅으로 성적인 욕설을 받았습니다.", allowExternalAi: true });
+  assert.equal(written.length, 1);
+  assert.deepEqual(written[0].slice(0, 3), ["search_embedding", "text-embedding-3-small", 61]);
+  // The query the user typed is not among the values.
+  assert.equal(written[0].some((value) => String(value).includes("욕설")), false);
+
+  // Refusing consent makes no call, so there is nothing to bill.
+  await post({ query: "게임 채팅으로 성적인 욕설을 받았습니다.", allowExternalAi: false });
+  assert.equal(written.length, 1);
+});

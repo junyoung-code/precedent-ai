@@ -97,6 +97,12 @@ function analysisError(code, message) {
   return Object.assign(new Error(message), { code });
 }
 
+// Each web_search_call is billed as a tool call on top of the tokens, and the
+// usage block does not mention them, so the count has to come from the output.
+function countWebSearches(payload) {
+  return (payload?.output || []).filter((item) => item?.type === "web_search_call").length;
+}
+
 function outputText(payload) {
   for (const item of payload?.output || []) {
     for (const content of item?.content || []) {
@@ -180,7 +186,11 @@ export class OpenAiAnalysisClient {
     const text = outputText(payload);
     if (!text) throw analysisError("ANALYSIS_RESPONSE_INVALID", "분석 응답이 비어 있습니다.");
     try {
-      return { analysis: JSON.parse(text), usage: payload?.usage || null };
+      return {
+        analysis: JSON.parse(text),
+        usage: payload?.usage || null,
+        webSearches: countWebSearches(payload),
+      };
     } catch {
       throw analysisError("ANALYSIS_RESPONSE_INVALID", "분석 응답 형식이 올바르지 않습니다.");
     }
