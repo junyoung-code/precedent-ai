@@ -581,53 +581,95 @@ test("POST /api/analysis reports why it has nothing instead of failing the page"
   assert.equal(empty.body.error, "INTAKE_INPUT_REQUIRED");
 });
 
-test("POST /api/analysis shows a web post only after the page has answered for itself", async (t) => {
-  // Two of these three never reach the network: one has no usable address, one
-  // copies a stranger's phone number out of their post.
-  const analysisClient = {
-    analyze: async () => ({
-      analysis: {
-        overview: [], elementNotes: [], precedentNotes: [], nextSteps: [],
-        webCases: [
-          { title: "게임 채팅 통매음 질문", url: "https://kin.naver.com/qna/detail.naver?docId=1", sourceType: "qna", quote: "게임 채팅으로 성적인 욕설을 들었다는 질문입니다." },
-          { title: "지어낸 글", url: "javascript:alert(1)", sourceType: "community", quote: "존재하지 않는 주소입니다." },
-          { title: "연락처가 적힌 글", url: "https://gall.dcinside.com/board/view/?id=a&no=2", sourceType: "community", quote: "상대가 010-1234-5678로 연락했다고 적혀 있습니다." },
-        ],
-      },
-    }),
-  };
-  const seen = [];
-  const verifyWeb = async ({ cases }) => {
-    seen.push(...cases.map((item) => item.url));
-    return { cases, dropped: [] };
-  };
-  const server = analysisServer({ analysisClient, verifyWeb });
+test("POST /api/web-cases searches on the situation, never on the words the user wrote", async (t) => {
+  // A victim's own sentences describe a sex offence and name who was involved.
+  // The query is built from tags before anything leaves the server, which is
+  // also what lets one cached row serve everyone who lands on it.
+  let seenKey = null;
+  const pool = { query: async () => ({ rows: [] }) };
+  const server = createSearchApiServer({
+    pool,
+    analysisClient: { model: "m" },
+    readWeb: async ({ queryKey }) => {
+      seenKey = queryKey;
+      return { cases: [{ title: "게임 통매음 질문", url: "https://www.lawtalk.co.kr/qna/1", sourceType: "lawyer_qna", quote: "게임 채팅 질문입니다.", medium: "game_chat", expression: "insult_with_sexual_terms", writerRole: "victim" }], fetchedAt: new Date(), stale: false };
+    },
+  });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
 
-  const result = await postAnalysis(server.address().port, { redactedText: "게임 채팅으로 성적인 욕설을 들었습니다.", allowExternalAi: true });
-  assert.deepEqual(seen, ["https://kin.naver.com/qna/detail.naver?docId=1"]);
-  assert.deepEqual(result.body.webCases.map((item) => item.title), ["게임 채팅 통매음 질문"]);
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/api/web-cases`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      redactedText: "롤 게임 채팅으로 상대가 니애미 어쩌고 하는 성적인 욕설을 여러 번 보냈습니다.",
+      role: "victim",
+      allowExternalAi: true,
+    }),
+  });
+  const body = await response.json();
+  assert.equal(seenKey, "게임 채팅 성적 욕설 패드립 통매음 통신매체이용음란");
+  assert.equal(seenKey.includes("니애미"), false);
+  assert.equal(body.webCases.length, 1);
 });
 
-test("POST /api/analysis sends the model a generalized query, not the user's sentences", async (t) => {
-  // Consent says the web search runs on the situation rather than the words the
-  // user wrote, so the query has to be built here rather than left to a model.
-  let received = null;
+test("POST /api/web-cases reads nothing without consent", async (t) => {
+  let called = false;
+  const server = createSearchApiServer({
+    pool: { query: async () => ({ rows: [] }) },
+    analysisClient: { model: "m" },
+    readWeb: async () => { called = true; return { cases: [] }; },
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/api/web-cases`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ redactedText: "게임 채팅으로 성적인 욕설을 들었습니다.", allowExternalAi: false }),
+  });
+  assert.deepEqual((await response.json()).webCases, []);
+  assert.equal(called, false);
+});
+
+test("a locked analysis is never written, only unshown", async (t) => {
+  // A screen that blurs text the server already generated costs exactly as much
+  // as showing it and comes apart in the network tab. The gate is the lock.
+  let calls = 0;
   const analysisClient = {
-    analyze: async (input) => {
-      received = input;
-      return { analysis: { overview: [], elementNotes: [], precedentNotes: [], nextSteps: [], webCases: [] } };
+    model: "m",
+    analyze: async () => {
+      calls += 1;
+      return { analysis: { overview: ["설명"], elementNotes: [], precedentNotes: [], nextSteps: ["기록을 보관하세요."] } };
     },
   };
   const server = analysisServer({ analysisClient });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
+  const locked = createSearchApiServer({
+    pool: { query: async () => ({ rows: [STATUTE_ROW] }) },
+    analysisClient,
+    entitlements: () => ({ analysis: false, reason: "ANALYSIS_REQUIRES_PLAN" }),
+  });
+  await new Promise((resolve) => locked.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => locked.close(resolve)));
 
-  const description = "롤 게임 채팅으로 상대가 니애미 어쩌고 하는 성적인 욕설을 여러 번 보냈습니다.";
-  await postAnalysis(server.address().port, { redactedText: description, allowExternalAi: true });
-  assert.equal(received.searchQuery, "게임 채팅 성적 욕설 패드립 통매음 통신매체이용음란");
-  assert.equal(received.searchQuery.includes("니애미"), false);
+  const body = { redactedText: "게임 채팅으로 성적인 욕설을 여러 번 들었습니다.", allowExternalAi: true };
+  const shut = await postAnalysis(locked.address().port, body);
+  assert.equal(calls, 0, "잠긴 요청은 모델을 부르면 안 됩니다");
+  assert.equal(shut.body.unavailable, "ANALYSIS_REQUIRES_PLAN");
+  assert.equal(shut.body.analysis, null);
+  // Nothing generated is anywhere in the payload.
+  assert.equal(JSON.stringify(shut.body).includes("설명"), false);
+  assert.equal(JSON.stringify(shut.body).includes("기록을 보관"), false);
+  // What costs nothing to produce is still there.
+  assert.ok(shut.body.statute.body.length > 0);
+  assert.equal(shut.body.elements.length, 4);
+
+  // Default stays open, so nothing changes until the paywall is switched on.
+  const open = await postAnalysis(server.address().port, body);
+  assert.equal(calls, 1);
+  assert.deepEqual(open.body.analysis.overview, ["설명"]);
 });
 
 test("the usage dashboard stays shut unless it is asked for", async (t) => {

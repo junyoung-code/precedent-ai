@@ -57,6 +57,34 @@ function mapWebCases(value) {
     .slice(0, 6);
 }
 
+/**
+ * Similar posts, from our own cache rather than a model.
+ *
+ * A separate request from the analysis because it is free and instant: it lands
+ * with the precedent cards instead of behind a ten-second call, and a reader
+ * without a plan still gets it.
+ */
+export async function fetchWebCases({ redactedText, role = null, allowExternalAi = false, fetchImpl = fetch, signal } = {}) {
+  let response;
+  try {
+    response = await fetchImpl("/api/web-cases", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redactedText, role, allowExternalAi: allowExternalAi === true }),
+      signal,
+    });
+    if (!response.ok) return { webCases: [], fetchedAt: null, unavailable: "WEB_CASES_UNAVAILABLE" };
+    const payload = await response.json();
+    return {
+      webCases: mapWebCases(payload?.webCases),
+      fetchedAt: typeof payload?.fetchedAt === "string" ? payload.fetchedAt : null,
+      unavailable: payload?.unavailable || null,
+    };
+  } catch {
+    return { webCases: [], fetchedAt: null, unavailable: "WEB_CASES_UNAVAILABLE" };
+  }
+}
+
 export async function analyseCase({
   redactedText,
   precedents = [],
@@ -85,17 +113,17 @@ export async function analyseCase({
       signal,
     });
   } catch {
-    return { statute: null, elements: [], analysis: null, webCases: [], unavailable: "ANALYSIS_API_UNAVAILABLE" };
+    return { statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_API_UNAVAILABLE" };
   }
   if (!response.ok) {
-    return { statute: null, elements: [], analysis: null, webCases: [], unavailable: "ANALYSIS_API_UNAVAILABLE" };
+    return { statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_API_UNAVAILABLE" };
   }
 
   let payload;
   try {
     payload = await response.json();
   } catch {
-    return { statute: null, elements: [], analysis: null, webCases: [], unavailable: "ANALYSIS_RESPONSE_INVALID" };
+    return { statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_RESPONSE_INVALID" };
   }
 
   const allowed = new Set(precedents.map((item) => item.caseNumber));
@@ -115,8 +143,6 @@ export async function analyseCase({
         nextSteps: cleanSentences(payload.analysis.nextSteps, 5),
       }
       : null,
-    // Every link here was fetched by the server before it was returned.
-    webCases: mapWebCases(payload?.webCases),
     unavailable: payload?.unavailable || null,
   };
 }

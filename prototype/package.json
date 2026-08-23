@@ -21,6 +21,8 @@
     "data:prune": "node --env-file-if-exists=.env.local scripts/prune-unrelated-precedents.mjs",
     "intake:purge": "node --env-file-if-exists=.env.local scripts/purge-expired-intake-sessions.mjs",
     "analysis:compare": "node --env-file-if-exists=.env.local scripts/compare-analysis-models.mjs",
+    "web:warm": "node --env-file-if-exists=.env.local scripts/warm-web-cases.mjs",
+    "web:compare": "node --env-file-if-exists=.env.local scripts/compare-web-cache.mjs",
     "vocab:probe": "node --env-file-if-exists=.env.local scripts/probe-vocabulary.mjs",
     "quality:evaluate": "node --env-file-if-exists=.env.local scripts/evaluate-search-quality.mjs",
     "test": "node --test tests/*.test.mjs",

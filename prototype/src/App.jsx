@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { extractCaseFacts } from "./lib/search.js";
 import { redactSensitiveText } from "./lib/privacy-redaction.js";
 import { abandonIntake, answerIntake, cancelIntake, completeIntake, createIntake } from "./lib/intake-api.js";
-import { analyseCase } from "./lib/analysis-api.js";
+import { analyseCase, fetchWebCases } from "./lib/analysis-api.js";
 
 const FACT_LABELS = {
   medium: {
@@ -579,6 +579,24 @@ const ANALYSIS_ABSENCE_REASON = {
   ANALYSIS_RESPONSE_INVALID: "AI 분석 응답을 확인하지 못했습니다. 위 판례 결과는 그대로 유효합니다.",
 };
 
+const ANALYSIS_LOCKED_REASON = "ANALYSIS_REQUIRES_PLAN";
+
+/**
+ * The shape of what a plan adds, with none of it written.
+ *
+ * The bars are not covering hidden text — the server never called a model for
+ * this reader, so there are no sentences to uncover. That is why the blur can
+ * be a plain visual cue rather than a defence: a reader opening the network tab
+ * finds the same nothing the screen shows.
+ */
+function LockedNotes({ rows = 2 }) {
+  return (
+    <div className="locked-lines" aria-hidden="true">
+      {Array.from({ length: rows }, (_, row) => <span key={row} className="locked-line" />)}
+    </div>
+  );
+}
+
 /**
  * Everything below the verified cards, split so a reader can tell what each
  * panel is. The statute panel quotes the article; the summary panel is text a
@@ -603,10 +621,38 @@ function AnalysisPlaceholder({ state }) {
   return <p className="analysis-status">{ANALYSIS_ABSENCE_REASON[state.unavailable] || ANALYSIS_ABSENCE_REASON.ANALYSIS_API_UNAVAILABLE}</p>;
 }
 
+/**
+ * What a plan adds, described rather than teased.
+ *
+ * It sits under the blurred shape rather than over it, because a notice laid on
+ * top of a blur leaves both unreadable. And it says what the reader would get
+ * in the same terms the product uses everywhere else — an explanation of the
+ * article, not an answer about their case, which is not for sale either.
+ */
+function PlanNotice() {
+  return (
+    <div className="plan-notice">
+      <p className="plan-notice-head"><span aria-hidden="true">🔒</span> 유료 이용 시 제공되는 내용입니다</p>
+      <ul className="plan-notice-list">
+        <li>각 요건이 무슨 뜻인지, 회원님이 적은 내용의 어느 부분이 거기 닿는지 AI가 풀어서 설명합니다</li>
+        <li>검색된 판례가 회원님 상황과 어디가 닮고 어디가 다른지 정리해 드립니다</li>
+        <li>기록을 어떻게 정리해두면 좋을지 안내합니다</li>
+      </ul>
+      <p className="plan-notice-foot">
+        위 조문과 요건 표시, 그리고 판례·비슷한 사례는 무료입니다.
+        유료 내용도 회원님 사건의 결론을 알려드리는 것이 아니라 조문을 풀어 설명하는 것입니다.
+      </p>
+    </div>
+  );
+}
+
 function StatutePanel({ state }) {
   const { statute, elements, analysis } = state;
   if (!statute) return <AnalysisPlaceholder state={state} />;
   const noteFor = (id) => analysis?.elementNotes.find((item) => item.id === id)?.text;
+  // The article is public law and the verdicts come from the rules, so both are
+  // free to produce and shown either way. Only the explanation is behind a plan.
+  const locked = state.unavailable === ANALYSIS_LOCKED_REASON;
 
   return (
     <div className="analysis-card">
@@ -625,9 +671,11 @@ function StatutePanel({ state }) {
             </div>
             <p className="element-quote">“{element.statuteQuote}”</p>
             <p className="element-evidence"><span aria-hidden="true">▸</span> {element.evidence}</p>
-            {noteFor(element.id) && (
-              <p className="element-note"><span className="ai-tag">AI</span> {noteFor(element.id)}</p>
-            )}
+            {locked
+              ? <LockedNotes rows={2} />
+              : noteFor(element.id) && (
+                <p className="element-note"><span className="ai-tag">AI</span> {noteFor(element.id)}</p>
+              )}
           </li>
         ))}
       </ul>
@@ -636,6 +684,8 @@ function StatutePanel({ state }) {
         <strong>각 항목은 회원님이 적은 내용에 그 요건이 언급되었는지만 표시한 것입니다.</strong>
         {" "}요건이 실제로 충족되는지는 증거를 확인한 뒤 법원이 판단합니다.
       </p>
+
+      {locked && <PlanNotice />}
     </div>
   );
 }
@@ -654,8 +704,20 @@ const SOURCE_TYPE_LABEL = {
  * community answer about whether something is a crime is wrong often enough
  * that a reader who takes one as an answer is worse off than before.
  */
-function WebCasesPanel({ webCases }) {
-  if (!webCases?.length) return null;
+function WebCasesPanel({ state }) {
+  if (state?.loading) {
+    return (
+      <div className="analysis-card web-cases">
+        <h3>비슷한 상황을 겪은 사람들의 글</h3>
+        <div className="skeleton-list" aria-hidden="true">
+          {[0, 1, 2].map((row) => <div key={row} className="skeleton-row" />)}
+        </div>
+      </div>
+    );
+  }
+  const webCases = state?.webCases || [];
+  if (webCases.length === 0) return null;
+  const fetchedOn = state?.fetchedAt ? new Date(state.fetchedAt) : null;
   return (
     <div className="analysis-card web-cases">
       <h3>비슷한 상황을 겪은 사람들의 글</h3>
@@ -676,14 +738,26 @@ function WebCasesPanel({ webCases }) {
       </ul>
       <p className="source-reminder">
         AI가 웹에서 찾아온 글이며, 서버가 각 주소에 실제로 접속해 존재를 확인한 것만 남겼습니다. 요약은 AI가 쓴 것이므로 원문을 직접 확인하십시오.
+        {fetchedOn && ` ${fetchedOn.getMonth() + 1}월 ${fetchedOn.getDate()}일 기준입니다.`}
       </p>
     </div>
   );
 }
 
 function AiSummaryPanel({ state }) {
-  const { analysis, webCases } = state;
-  if (!analysis) return <AnalysisPlaceholder state={state} />;
+  const { analysis } = state;
+  if (!analysis) {
+    if (state.unavailable !== ANALYSIS_LOCKED_REASON) return <AnalysisPlaceholder state={state} />;
+    return (
+      <div className="analysis-card">
+        <h3>회원님 상황 정리</h3>
+        <LockedNotes rows={3} />
+        <h3 className="locked-heading">지금 해두면 좋은 것</h3>
+        <LockedNotes rows={3} />
+        <PlanNotice />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -709,8 +783,6 @@ function AiSummaryPanel({ state }) {
           <p className="source-reminder">자료를 정리하는 방법에 관한 안내이며, 법적 조치를 권하는 것이 아닙니다.</p>
         </div>
       )}
-
-      <WebCasesPanel webCases={webCases} />
     </>
   );
 }
@@ -733,11 +805,11 @@ const RESULT_SCREENS = [
  * one animates, so the deck is as tall as what is on screen rather than as
  * tall as its longest screen.
  */
-function ResultDeck({ precedents, resultCount, analysisState }) {
+function ResultDeck({ precedents, resultCount, analysisState, webCasesState }) {
   const [index, setIndex] = useState(0);
   const [direction, setDirection] = useState("forward");
   const deckRef = useRef(null);
-  const state = analysisState || { loading: false, statute: null, elements: [], analysis: null, webCases: [], unavailable: "ANALYSIS_DISABLED" };
+  const state = analysisState || { loading: false, statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_DISABLED" };
 
   function go(next) {
     if (next < 0 || next >= RESULT_SCREENS.length) return;
@@ -765,6 +837,7 @@ function ResultDeck({ precedents, resultCount, analysisState }) {
       <>
         <p className="screen-lead">AI가 쓴 설명입니다. 판례 화면의 기록과 성격이 다릅니다.</p>
         <AiSummaryPanel state={state} />
+        <WebCasesPanel state={webCasesState} />
       </>
     ),
   };
@@ -830,7 +903,7 @@ function ResultDeck({ precedents, resultCount, analysisState }) {
 }
 
 
-function ResultsView({ description, results, coverage, searchFailed, onRetry, onHome, resultsStartRef, analysisState }) {
+function ResultsView({ description, results, coverage, searchFailed, onRetry, onHome, resultsStartRef, analysisState, webCasesState }) {
   const [showAll, setShowAll] = useState(false);
   const facts = useMemo(() => extractCaseFacts(description), [description]);
   const visibleResults = showAll ? results : results.slice(0, 3);
@@ -883,6 +956,7 @@ function ResultsView({ description, results, coverage, searchFailed, onRetry, on
           )}
           resultCount={results.length}
           analysisState={analysisState}
+          webCasesState={webCasesState}
         />
       )}
     </section>
@@ -902,6 +976,7 @@ export function App() {
   const [intake, setIntake] = useState({ sessionId: null, questions: [] });
   const [submittedDescription, setSubmittedDescription] = useState("");
   const [analysisState, setAnalysisState] = useState(null);
+  const [webCasesState, setWebCases] = useState(null);
   // Identifies the analysis the screen is waiting for, so a reply that arrives
   // after the user moved on is discarded instead of rendered.
   const analysisTokenRef = useRef(0);
@@ -964,6 +1039,7 @@ export function App() {
     setDescription("");
     setSubmittedDescription("");
     setAnalysisState(null);
+    setWebCases(null);
     analysisTokenRef.current += 1;
     setAllowExternalEmbedding(false);
     // Remount the composer so the capture, its transcript and any answers go with it.
@@ -973,7 +1049,15 @@ export function App() {
 
   async function requestAnalysis({ redactedText, precedents }) {
     const token = ++analysisTokenRef.current;
-    setAnalysisState({ loading: true, statute: null, elements: [], analysis: null, webCases: [], unavailable: null });
+    setAnalysisState({ loading: true, statute: null, elements: [], analysis: null, unavailable: null });
+    setWebCases({ loading: true, webCases: [], fetchedAt: null, unavailable: null });
+
+    // A cache read, so it lands with the precedent cards rather than behind the
+    // model. Deliberately not awaited together with the analysis.
+    fetchWebCases({ redactedText, role, allowExternalAi }).then((found) => {
+      if (token !== analysisTokenRef.current) return;
+      setWebCases({ loading: false, ...found });
+    });
     const next = await analyseCase({ redactedText, precedents, allowExternalAi });
     // A new case may have started while this was in flight.
     if (token !== analysisTokenRef.current) return;
@@ -1123,6 +1207,7 @@ export function App() {
                 onHome={goHome}
                 resultsStartRef={resultsStartRef}
                 analysisState={analysisState}
+                webCasesState={webCasesState}
               />
             )}
           </main>

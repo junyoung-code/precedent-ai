@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import { normalizeSearchQuery, searchPrecedents } from "./search-precedents.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
 import { validateGroundedAnalysis } from "./grounded-analysis.mjs";
-import { buildWebSearchQuery, validateWebCases, verifyWebCases } from "./web-cases.mjs";
+import { buildWebSearchQuery, selectWebCases } from "./web-cases.mjs";
+import { readWebCasesWithRefresh } from "./web-case-refresh.mjs";
+import { resolveEntitlement } from "./entitlements.mjs";
 import { mapFactsToArticle13 } from "./statute-elements.mjs";
 import { COMMUNICATION_OBSCENITY_ARTICLE, readStatuteArticle } from "./statutes.mjs";
 import { buildIntakeQuestions } from "./intake-questions.mjs";
@@ -46,7 +48,7 @@ function intakeInputError() {
  * in a second and must not wait on a model that takes ten. Nothing here is
  * stored — the description arrives, is analysed, and is gone with the response.
  */
-async function analyseCase({ pool, body, analysisClient, extractFacts, verifyWeb = verifyWebCases }) {
+async function analyseCase({ pool, body, analysisClient, extractFacts, entitlement = { analysis: true } }) {
   const redactedText = String(body.redactedText || "").trim();
   if (!redactedText) throw intakeInputError();
   if (!analysisClient) return { analysis: null, unavailable: "ANALYSIS_DISABLED" };
@@ -57,12 +59,24 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, verifyWeb
   const precedents = Array.isArray(body.precedents) ? body.precedents.slice(0, 5) : [];
   const facts = extractFacts(redactedText);
   const elements = mapFactsToArticle13(facts);
+  const publicElements = elements.map(({ id, label, statuteQuote, mention, evidence }) => ({ id, label, statuteQuote, mention, evidence }));
+  const publicStatute = {
+    lawName: statute.lawName, articleTitle: statute.articleTitle,
+    body: statute.body, enforcedOn: statute.enforcedOn, officialUrl: statute.officialUrl,
+  };
+
+  // The statute is public law and the four verdicts come from the rules, so
+  // both cost nothing to produce and are shown either way. Only the sentences a
+  // model writes are behind the gate — and they are not written at all.
+  if (!entitlement.analysis) {
+    return { statute: publicStatute, elements: publicElements, analysis: null, unavailable: entitlement.reason };
+  }
+
   let payload;
   const started = Date.now();
   try {
     const result = await analysisClient.analyze({
       statute, elements, description: redactedText, precedents,
-      searchQuery: buildWebSearchQuery(facts),
     });
     payload = result.analysis;
     await recordApiUsage({
@@ -80,17 +94,33 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, verifyWeb
   const allowed = new Set(precedents.map((item) => String(item?.caseNumber || "")).filter(Boolean));
   const checked = validateGroundedAnalysis(payload, allowed);
 
-  // The model writes each link as free text, so nothing about a web item is
-  // trusted until the page has answered for itself.
-  const shaped = validateWebCases(payload?.webCases);
-  const verified = shaped.cases.length > 0 ? await verifyWeb({ cases: shaped.cases }) : { cases: [] };
-
   return {
-    statute: { lawName: statute.lawName, articleTitle: statute.articleTitle, body: statute.body, enforcedOn: statute.enforcedOn, officialUrl: statute.officialUrl },
-    elements: elements.map(({ id, label, statuteQuote, mention, evidence }) => ({ id, label, statuteQuote, mention, evidence })),
+    statute: publicStatute,
+    elements: publicElements,
     analysis: { overview: checked.overview, elementNotes: checked.elementNotes, precedentNotes: checked.precedentNotes, nextSteps: checked.nextSteps },
-    webCases: verified.cases,
     unavailable: null,
+  };
+}
+
+/**
+ * Similar posts, served from the cache rather than fetched per reader.
+ *
+ * Free and separate from the analysis on purpose: this is a database read, so
+ * it lands with the precedent cards instead of behind a model that takes ten
+ * seconds, and a reader without a plan still gets it.
+ */
+async function readWebCases({ pool, body, analysisClient, extractFacts, readWeb = readWebCasesWithRefresh }) {
+  const redactedText = String(body.redactedText || "").trim();
+  if (!redactedText) throw intakeInputError();
+  if (body.allowExternalAi !== true) return { webCases: [], fetchedAt: null, unavailable: "ANALYSIS_DISABLED" };
+
+  const facts = extractFacts(redactedText);
+  const queryKey = buildWebSearchQuery(facts);
+  const cached = await readWeb({ pool, client: analysisClient, queryKey });
+  return {
+    webCases: selectWebCases({ cases: cached.cases, facts, role: body.role || null, limit: 3 }),
+    fetchedAt: cached.fetchedAt ? new Date(cached.fetchedAt).toISOString() : null,
+    unavailable: cached.cases.length === 0 ? "WEB_CASES_EMPTY" : null,
   };
 }
 
@@ -116,7 +146,8 @@ export function createSearchApiServer({
   intakeSessions = { createIntakeSession, answerIntakeSession, deleteIntakeSession, getIntakeSessionForCompletion },
   extractFacts = extractFactTags,
   buildQuestions = buildIntakeQuestions,
-  verifyWeb = verifyWebCases,
+  entitlements = resolveEntitlement,
+  readWeb = readWebCasesWithRefresh,
   // Off unless asked for. It is a window onto spending, not something a
   // deployed service should answer to anyone who guesses the path.
   devDashboard = false,
@@ -189,7 +220,14 @@ export function createSearchApiServer({
           body,
           analysisClient: consented ? analysisClient : null,
           extractFacts,
-          verifyWeb,
+          entitlement: entitlements(),
+        }));
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/web-cases") {
+        const body = await readJson(request);
+        return sendJson(response, 200, await readWebCases({
+          pool, body, analysisClient, extractFacts, readWeb,
         }));
       }
 

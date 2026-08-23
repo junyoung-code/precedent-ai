@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildWebSearchQuery, tidyTitle, validateWebCases, verifyWebCases } from "../server/web-cases.mjs";
+import {
+  WEB_BATCH_SIZE, WEB_MEDIUMS, buildWebSearchQuery, selectWebCases, tidyTitle, validateWebCases, verifyWebCases,
+} from "../server/web-cases.mjs";
+import { extractFactTags } from "../src/lib/fact-tags.js";
 
 const ok = {
   title: "게임하다 1대1채팅으로 패드립과 성드립을 들었습니다",
@@ -84,9 +87,10 @@ test("shows one link once", () => {
   assert.equal(cases.length, 1);
 });
 
-test("shows at most six", () => {
-  const many = Array.from({ length: 10 }, (_, index) => ({ ...ok, url: `https://example.com/post/${index}` }));
-  assert.equal(validateWebCases(many).cases.length, 6);
+test("stores a whole batch but hands a screen only what it asked for", () => {
+  const many = Array.from({ length: 30 }, (_, index) => ({ ...ok, url: `https://example.com/post/${index}` }));
+  assert.equal(validateWebCases(many).cases.length, WEB_BATCH_SIZE);
+  assert.equal(validateWebCases(many, { limit: 3 }).cases.length, 3);
 });
 
 test("drops a link the page itself does not answer for", async () => {
@@ -133,4 +137,86 @@ test("shows a post's title without the site's own tail", () => {
     "게임 중 상대방이 패드립을 한 경우 통신매체이용음란죄가 성립되나요?",
   );
   assert.equal(validateWebCases([{ ...ok, title: "질문 있습니다 통매음 관련 | 로톡" }]).cases[0].title, "질문 있습니다 통매음 관련");
+});
+
+test("names every medium the rules can produce", () => {
+  // A missing word does not fail loudly. The query simply goes out without a
+  // medium and a bank-transfer memo case comes back holding game chat posts —
+  // which is exactly what shipped for a day.
+  for (const medium of WEB_MEDIUMS) {
+    if (medium === "unknown") continue;
+    const query = buildWebSearchQuery({ medium, expressionType: "sexual_text" });
+    assert.notEqual(query, buildWebSearchQuery({ medium: "unknown", expressionType: "sexual_text" }), medium);
+  }
+});
+
+test("carries the medium of a real complaint into its search", () => {
+  const cases = [
+    ["모르는 사람이 제 계좌로 1원씩 입금하면서 송금 메모에 성적인 욕설을 적었습니다.", "송금 메모"],
+    ["집 문에 성적인 내용의 편지를 끼워 두고 갔습니다.", "편지 직접 전달"],
+    ["롤 하다가 상대가 패드립을 쳤습니다.", "게임 채팅"],
+  ];
+  for (const [description, word] of cases) {
+    assert.ok(buildWebSearchQuery(extractFactTags(description)).includes(word), description);
+  }
+});
+
+test("puts the posts closest to the reader's facts first", () => {
+  const cases = [
+    { title: "다른 매체", medium: "kakao", expression: "insult_with_sexual_terms", writerRole: "unclear" },
+    { title: "태그 없음", medium: "unknown", expression: "other", writerRole: "unclear" },
+    { title: "같은 상황", medium: "game_chat", expression: "insult_with_sexual_terms", writerRole: "unclear" },
+  ];
+  const facts = { medium: "game_chat", expressionType: "insult_with_sexual_terms" };
+  assert.equal(selectWebCases({ cases, facts, limit: 1 })[0].title, "같은 상황");
+  // Fewer stored than asked for is not an error; the reader gets what there is.
+  assert.equal(selectWebCases({ cases: cases.slice(1), facts, limit: 3 }).length, 2);
+  assert.deepEqual(selectWebCases({ cases: [], facts }), []);
+});
+
+test("prefers a post written from the reader's side of the same event", () => {
+  // The batch is shared by both sides of one situation, so the ordering is the
+  // only thing that can tell them apart. It cannot invent what is not stored:
+  // a one-sided batch leaves half the readers nothing, which is why the fetch
+  // asks for a balanced mix.
+  const cases = [
+    { title: "신고당한 사람 글", medium: "game_chat", expression: "insult_with_sexual_terms", writerRole: "reported" },
+    { title: "당한 사람 글", medium: "game_chat", expression: "insult_with_sexual_terms", writerRole: "victim" },
+  ];
+  const facts = { medium: "game_chat", expressionType: "insult_with_sexual_terms" };
+  assert.equal(selectWebCases({ cases, facts, role: "victim", limit: 1 })[0].title, "당한 사람 글");
+  assert.equal(selectWebCases({ cases, facts, role: "reported", limit: 1 })[0].title, "신고당한 사람 글");
+  // With no role given the batch keeps the order the search returned.
+  assert.equal(selectWebCases({ cases, facts, limit: 1 })[0].title, "신고당한 사람 글");
+});
+
+test("keeps the tags a stored post is labelled with, and defaults the rest", () => {
+  const [item] = validateWebCases([{
+    title: "게임 채팅 통매음 질문", url: "https://kin.naver.com/qna/detail.naver?docId=1",
+    sourceType: "qna", quote: "게임 채팅으로 성적인 욕설을 들었다는 질문입니다.",
+    medium: "game_chat", expression: "insult_with_sexual_terms", writerRole: "victim",
+  }]).cases;
+  assert.equal(item.medium, "game_chat");
+  assert.equal(item.writerRole, "victim");
+
+  const [bare] = validateWebCases([{ ...ok, writerRole: "정체불명" }]).cases;
+  assert.equal(bare.medium, "unknown");
+  assert.equal(bare.expression, "other");
+  assert.equal(bare.writerRole, "unclear");
+});
+
+test("shows fewer posts rather than posts about a different medium", () => {
+  // A bank transfer memo case has almost nothing written about it online, and
+  // the batch filled up with game chat posts instead. Padding the list to three
+  // is the web-section version of inventing a precedent.
+  const cases = [
+    { title: "게임 글", medium: "game_chat", expression: "insult_with_sexual_terms", writerRole: "victim" },
+    { title: "SNS 글", medium: "sns_mention", expression: "insult_with_sexual_terms", writerRole: "victim" },
+    { title: "태그 없는 글", medium: "unknown", expression: "insult_with_sexual_terms", writerRole: "victim" },
+  ];
+  const facts = { medium: "bank_transfer", expressionType: "insult_with_sexual_terms" };
+  assert.deepEqual(selectWebCases({ cases, facts }).map((item) => item.title), ["태그 없는 글"]);
+
+  // A reader whose own medium could not be read is not narrowed at all.
+  assert.equal(selectWebCases({ cases, facts: { medium: "unknown", expressionType: "insult_with_sexual_terms" } }).length, 3);
 });

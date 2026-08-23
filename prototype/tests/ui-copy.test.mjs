@@ -193,3 +193,38 @@ test("keeps the web section from reading as a verdict", () => {
     assert.equal(panel.includes(banned), false, `banned web copy: ${banned}`);
   }
 });
+
+test("shows the shape of what a plan adds, never text it hid", () => {
+  // The bars are not covering anything: when the gate is shut the server never
+  // calls a model, so there is nothing to uncover. The screen must not imply
+  // otherwise, and the notice sits under the blur rather than over it.
+  assert.match(appSource, /function LockedNotes/);
+  assert.match(appSource, /className="locked-lines" aria-hidden="true"/);
+  assert.match(appSource, /state\.unavailable === ANALYSIS_LOCKED_REASON/);
+  for (const panel of ["function StatutePanel", "function AiSummaryPanel"]) {
+    const body = appSource.slice(appSource.indexOf(panel));
+    const block = body.slice(0, body.indexOf("\nfunction ", 1));
+    assert.ok(block.indexOf("<LockedNotes") < block.indexOf("<PlanNotice />"), panel);
+  }
+  assert.match(appSource, /유료 이용 시 제공되는 내용입니다/);
+  assert.match(appSource, /위 조문과 요건 표시, 그리고 판례·비슷한 사례는 무료입니다/);
+});
+
+test("does not sell a verdict", () => {
+  // What is behind the plan is an explanation of the article, in the same terms
+  // the rest of the product uses. The conclusion is not for sale either.
+  const notice = appSource.slice(appSource.indexOf("function PlanNotice"), appSource.indexOf("function StatutePanel"));
+  for (const banned of ["성립", "해당되는지", "유죄", "무죄", "처벌", "승소", "고소 가능"]) {
+    assert.equal(notice.includes(banned), false, `banned plan copy: ${banned}`);
+  }
+  assert.match(notice, /회원님 사건의 결론을 알려드리는 것이 아니라/);
+});
+
+test("keeps similar posts on the free side of the gate", () => {
+  // They come from our own cache, so they cost nothing per reader and stay
+  // visible whether or not the analysis is unlocked.
+  assert.match(appSource, /<AiSummaryPanel state=\{state\} \/>\s*\n\s*<WebCasesPanel state=\{webCasesState\} \/>/);
+  assert.match(appSource, /fetchWebCases\(\{ redactedText, role, allowExternalAi \}\)/);
+  // Dated, because a cached batch is not what the web looks like right now.
+  assert.match(appSource, /일 기준입니다/);
+});

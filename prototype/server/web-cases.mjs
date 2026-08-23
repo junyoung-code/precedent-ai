@@ -1,8 +1,25 @@
+import { compareFactTags } from "../src/lib/fact-tags.js";
 import { redactSensitiveText } from "../src/lib/privacy-redaction.js";
 
 export const WEB_SOURCE_TYPES = ["community", "qna", "lawyer_qna", "blog", "news"];
 
-const MAX_CASES = 6;
+// Who the post was written by. Two people can describe the same facts and want
+// completely different reading: one is asking how to report, the other how to
+// answer a report.
+export const WEB_WRITER_ROLES = ["victim", "reported", "unclear"];
+
+// The tag vocabularies a stored post is labelled with. They are the same values
+// extractFactTags produces, so compareFactTags can weigh a post against a
+// reader's facts without any translation in between.
+export const WEB_MEDIUMS = [
+  "kakao", "game_chat", "sns_mention", "digital_message", "bank_transfer", "direct_delivery", "unknown",
+];
+export const WEB_EXPRESSIONS = ["sexual_text", "insult_with_sexual_terms", "sexual_image", "other"];
+
+// How many posts one query's batch holds. Bigger than any screen shows, because
+// the batch is fetched once and narrowed per reader. The fetch schema and the
+// validator have to agree on it, so it lives here and analysis-client imports it.
+export const WEB_BATCH_SIZE = 12;
 const MAX_BODY = 400_000;
 
 /**
@@ -72,7 +89,7 @@ function text(value, maxLength) {
  * judgment. Reachability and whether the page really says this is a separate
  * step, because it costs requests.
  */
-export function validateWebCases(items) {
+export function validateWebCases(items, { limit = WEB_BATCH_SIZE } = {}) {
   const dropped = [];
   const seen = new Set();
   const cases = [];
@@ -91,8 +108,19 @@ export function validateWebCases(items) {
     const key = `${url.host}${url.pathname}${url.search}`;
     if (seen.has(key)) { dropped.push("duplicate"); continue; }
     seen.add(key);
-    cases.push({ title, url: url.toString(), sourceType, quote });
-    if (cases.length >= MAX_CASES) break;
+    cases.push({
+      title,
+      url: url.toString(),
+      sourceType,
+      quote,
+      // What the post is about, so a stored batch can be narrowed later without
+      // asking a model again. Absent or unrecognised reads as unknown, which
+      // compareFactTags skips rather than counting as a mismatch.
+      medium: typeof item.medium === "string" ? item.medium : "unknown",
+      expression: typeof item.expression === "string" ? item.expression : "other",
+      writerRole: WEB_WRITER_ROLES.includes(item.writerRole) ? item.writerRole : "unclear",
+    });
+    if (cases.length >= limit) break;
   }
 
   return { cases, dropped };
@@ -147,12 +175,18 @@ export async function verifyWebCases({ cases, fetchImpl = fetch, timeoutMs = 8_0
   return { cases: verified, dropped };
 }
 
+// Every medium the rules can produce needs a word here. A gap does not fail
+// loudly — the query simply goes out without a medium, and a bank-transfer memo
+// case comes back holding game chat posts. `other_digital` sat here for a day
+// naming a value extractFactTags never produces, while two real ones were
+// missing. WEB_MEDIUM_WORDS_COVERAGE in the tests is what keeps that honest.
 const MEDIUM_WORDS = {
   kakao: "카카오톡",
   game_chat: "게임 채팅",
   sns_mention: "SNS 디엠",
   digital_message: "문자 메시지",
-  other_digital: "온라인",
+  bank_transfer: "송금 메모",
+  direct_delivery: "편지 직접 전달",
 };
 
 const EXPRESSION_WORDS = {
@@ -170,7 +204,81 @@ const EXPRESSION_WORDS = {
  * the reader wants posts about the same kind of situation, not their own words
  * echoed back.
  */
+/**
+ * Narrows a stored batch down to what this reader should see.
+ *
+ * A cached row is shared by everyone whose facts reduce to the same tags, which
+ * is the whole reason it is cheap. Picking from a batch of eight rather than
+ * storing three puts the last step back under our control — and it runs on the
+ * full fact comparison the precedent cards already use, rather than on a
+ * model's reading of a sentence.
+ */
+export function selectWebCases({ cases, facts = {}, role = null, limit = 3 } = {}) {
+  const readerMedium = facts.medium && facts.medium !== "unknown" ? facts.medium : null;
+
+  const scored = (cases || []).map((item, index) => {
+    const { factScore, comparableCount } = compareFactTags(facts, {
+      medium: item.medium || "unknown",
+      expressionType: item.expression || "other",
+    });
+    // The row is already shared by both sides, so this is the only thing that
+    // tells them apart: a post plainly written from the other side goes last.
+    const known = item.writerRole && item.writerRole !== "unclear" && role;
+    const roleScore = known ? (item.writerRole === role ? 40 : -40) : 0;
+    return { item, index, score: (comparableCount === 0 ? 0 : factScore) + roleScore };
+  });
+
+  scored.sort((left, right) => right.score - left.score || left.index - right.index);
+  return scored
+    // A post about a different medium is not the same situation, whatever else
+    // it shares. Padding the list to three with game chat posts for a bank
+    // transfer memo case is the web-section version of inventing a precedent,
+    // and this service does not do that. Fewer is the honest answer.
+    .filter(({ item }) => !readerMedium
+      || !item.medium
+      || item.medium === "unknown"
+      || item.medium === readerMedium)
+    .slice(0, Math.max(limit, 0))
+    .map(({ item }) => item);
+}
+
 export function buildWebSearchQuery(facts = {}) {
   const parts = [MEDIUM_WORDS[facts.medium], EXPRESSION_WORDS[facts.expressionType]].filter(Boolean);
   return [...parts, "통매음", "통신매체이용음란"].join(" ");
+}
+
+// How long a stored batch is considered current. Past this a reader still gets
+// it immediately and a refresh runs behind the response, so nobody waits on a
+// web search and a query is never fetched more than once a day.
+export const WEB_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+const CACHE_UPSERT_SQL = `INSERT INTO web_case_cache (query_key, cases, model, fetched_at)
+ VALUES ($1, $2::jsonb, $3, now())
+ ON CONFLICT (query_key) DO UPDATE SET
+   cases = EXCLUDED.cases,
+   model = EXCLUDED.model,
+   fetched_at = now()`;
+
+export async function readCachedWebCases({ pool, queryKey }) {
+  const { rows } = await pool.query(
+    "SELECT cases, model, fetched_at AS \"fetchedAt\" FROM web_case_cache WHERE query_key = $1",
+    [String(queryKey)],
+  );
+  if (rows.length === 0) return null;
+  const fetchedAt = new Date(rows[0].fetchedAt);
+  return {
+    cases: Array.isArray(rows[0].cases) ? rows[0].cases : [],
+    model: rows[0].model,
+    fetchedAt,
+    stale: Date.now() - fetchedAt.getTime() > WEB_CACHE_TTL_MS,
+  };
+}
+
+export async function writeCachedWebCases({ pool, queryKey, cases, model }) {
+  // A search that came back with nothing is not a result worth keeping: writing
+  // it would replace a good batch with an empty one and then look fresh for a
+  // day. Leaving the old row alone means a reader keeps seeing what worked.
+  if (!Array.isArray(cases) || cases.length === 0) return false;
+  await pool.query(CACHE_UPSERT_SQL, [String(queryKey), JSON.stringify(cases), String(model || "")]);
+  return true;
 }

@@ -11,7 +11,6 @@ if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL_REQUIRED");
 if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY_REQUIRED");
 
 const CANDIDATES = (process.argv[2] || "gpt-5.6-sol,gpt-5.6-luna,gpt-5.6-terra,gpt-5.5,gpt-5.4,gpt-5-mini").split(",");
-const WEB = process.env.COMPARE_WEB_SEARCH === "true";
 
 const CASES = [
   ["송금 메모", "모르는 사람이 제 은행 계좌로 1원씩 여러 번 입금했습니다. 입금할 때마다 송금 메모란에 성적인 욕설과 제 신체를 비하하는 문구를 적어서 보냈고, 저는 은행 앱 거래내역에서 그 내용을 모두 확인했습니다."],
@@ -48,13 +47,14 @@ for (const [label, description] of CASES) {
 }
 await pool.end();
 
-console.log(`웹검색 ${WEB ? "켬" : "끔"} · 사례 ${prepared.length}개 · 모델 ${CANDIDATES.length}개\n`);
+console.log(`사례 ${prepared.length}개 · 모델 ${CANDIDATES.length}개`);
+
 const rows = [];
 
 for (const model of CANDIDATES) {
-  const row = { model, ok: 0, failed: 0, ms: 0, inTok: 0, outTok: 0, verdictDrops: 0, fakeCites: 0, webItems: 0, error: "" };
+  const row = { model, ok: 0, failed: 0, ms: 0, inTok: 0, outTok: 0, verdictDrops: 0, fakeCites: 0, error: "" };
   for (const item of prepared) {
-    const client = new OpenAiAnalysisClient({ apiKey: process.env.OPENAI_API_KEY, model, webSearch: WEB });
+    const client = new OpenAiAnalysisClient({ apiKey: process.env.OPENAI_API_KEY, model });
     const started = Date.now();
     try {
       const { analysis, usage } = await client.analyze(item.input);
@@ -64,8 +64,7 @@ for (const model of CANDIDATES) {
       const checked = validateGroundedAnalysis(analysis, item.allowed);
       row.verdictDrops += checked.dropped.filter((d) => d !== "precedentNote").length;
       row.fakeCites += (analysis.precedentNotes || []).filter((n) => !item.allowed.has(String(n?.caseNumber))).length;
-      row.webItems += (analysis.webCases || []).length;
-      row.ok += 1;
+        row.ok += 1;
     } catch (error) {
       row.failed += 1;
       row.error = row.error || `${error.code || error.name}`;
@@ -78,7 +77,6 @@ for (const model of CANDIDATES) {
     `  토큰 ${row.inTok}/${row.outTok}` +
     `  금지표현삭제 ${row.verdictDrops}` +
     `  없는판례인용 ${row.fakeCites}` +
-    (WEB ? `  웹 ${row.webItems}건` : "") +
     (row.error ? `  [${row.error}]` : ""),
   );
 }
