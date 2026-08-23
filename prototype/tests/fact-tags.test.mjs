@@ -97,6 +97,10 @@ test("reads the words a complaint is actually written in", () => {
     "상대가 저한테 씹새끼라고 했습니다.",
     "카톡으로 니꼬추 어쩌고 하는 메시지를 보냈습니다.",
     "모르는 사람이 자위하는 영상을 보냈습니다.",
+    // 성드립 is how people name the expression when they summarise rather than
+    // quote it, and npm run vocab:probe found it in most of a fresh sample.
+    "오버워치 하다가 상대가 성드립을 계속 쳤습니다.",
+    "오픈카톡방에서 성희롱하는 말을 들었습니다.",
   ]) {
     assert.notEqual(extractFactTags(description).expressionType, "other", description);
   }

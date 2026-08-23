@@ -50,6 +50,8 @@ const SEXUAL_SLUR_TERMS = [
   "보지", "자지", "좆", "꼬추", "씹새", "씹년", "씹할", "젖가슴", "젖탱",
   "따먹", "강간", "성폭행", "자위", "야동",
   "걸레년", "걸레같", "창녀", "섹스", "섹시", "야설", "음담패설", "변태", "몸캠", "딸딸이",
+  // What people call it when they are describing what they said, not quoting it.
+  "성드립", "야한말", "야한 말", "성희롱",
 ];
 
 function includesAny(text, words) {
