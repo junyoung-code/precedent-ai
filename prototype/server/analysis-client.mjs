@@ -1,12 +1,11 @@
 import { ARTICLE_13_ELEMENTS } from "./statute-elements.mjs";
+import { WEB_SOURCE_TYPES } from "./web-cases.mjs";
 
 const DEFAULT_ENDPOINT = "https://api.openai.com/v1/responses";
 
 // No default model. The one to use is decided by measuring candidates against
 // the same inputs, so it is configuration, not a constant someone guessed.
 export const ANALYSIS_MODEL_ENV = "ANALYSIS_MODEL";
-
-const SOURCE_TYPES = ["community", "qna", "lawyer_qna", "blog", "news"];
 
 function textArray(maxItems, maxLength) {
   return { type: "array", maxItems, items: { type: "string", minLength: 1, maxLength } };
@@ -59,7 +58,7 @@ function analysisSchema({ webSearch, caseNumbers = [] }) {
         properties: {
           title: { type: "string", minLength: 1, maxLength: 200 },
           url: { type: "string", minLength: 1, maxLength: 500 },
-          sourceType: { type: "string", enum: SOURCE_TYPES },
+          sourceType: { type: "string", enum: WEB_SOURCE_TYPES },
           quote: { type: "string", minLength: 1, maxLength: 300 },
         },
       },
@@ -85,11 +84,13 @@ const INSTRUCTIONS = [
 ].join(" ");
 
 const WEB_INSTRUCTIONS = [
-  "웹 검색으로 사용자와 비슷한 '상황'을 겪은 글을 찾아 webCases에 담으세요.",
-  "출처의 권위가 아니라 상황의 유사도로 고르세요. 커뮤니티 글, 지식iN 질문, 변호사 Q&A, 블로그 모두 좋습니다.",
-  "각 항목은 실제로 접근 가능한 URL을 그대로 담고, 인용은 세 문장 이내로 짧게 하세요.",
-  "글쓴이나 등장인물의 이름·연락처·계정·학교·회사를 인용에 옮기지 마세요.",
-  "판례를 소개하는 글이라도 사건번호를 근거처럼 내세우지 마세요.",
+  "웹 검색으로 사용자와 비슷한 '상황'을 겪은 사람이 직접 쓴 글을 찾아 webCases에 담으세요.",
+  "찾는 것은 개인이 쓴 글입니다: 네이버 지식iN 질문, 디시인사이드 같은 커뮤니티 글, 네이버 카페·블로그 경험담, 로톡 같은 곳에 올라온 실제 상담 질문.",
+  "뉴스 기사, 연구보고서, 법무법인 홍보 글, 판례 해설은 담지 마세요. 사용자가 찾는 것은 자기와 같은 일을 겪은 사람의 글입니다.",
+  "검색어는 입력의 웹검색_질의 값을 그대로 쓰거나 거기에 사이트 이름만 덧붙이세요. 사용자_입력의 문장을 검색어에 그대로 넣지 마세요.",
+  "title은 그 글의 실제 제목을 그대로 옮기고, url은 그 글로 바로 가는 주소를 그대로 담으세요. 지어내지 마세요.",
+  "quote는 그 글이 어떤 상황인지 두세 문장으로 요약하고, 글쓴이나 등장인물의 이름·연락처·계정·학교·회사는 옮기지 마세요.",
+  "사건번호나 법원명을 근거처럼 내세우는 항목은 담지 마세요.",
 ].join(" ");
 
 function analysisError(code, message) {

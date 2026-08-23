@@ -2,6 +2,7 @@ import http from "node:http";
 import { normalizeSearchQuery, searchPrecedents } from "./search-precedents.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
 import { validateGroundedAnalysis } from "./grounded-analysis.mjs";
+import { buildWebSearchQuery, validateWebCases, verifyWebCases } from "./web-cases.mjs";
 import { mapFactsToArticle13 } from "./statute-elements.mjs";
 import { COMMUNICATION_OBSCENITY_ARTICLE, readStatuteArticle } from "./statutes.mjs";
 import { buildIntakeQuestions } from "./intake-questions.mjs";
@@ -43,7 +44,7 @@ function intakeInputError() {
  * in a second and must not wait on a model that takes ten. Nothing here is
  * stored — the description arrives, is analysed, and is gone with the response.
  */
-async function analyseCase({ pool, body, analysisClient, extractFacts }) {
+async function analyseCase({ pool, body, analysisClient, extractFacts, verifyWeb = verifyWebCases }) {
   const redactedText = String(body.redactedText || "").trim();
   if (!redactedText) throw intakeInputError();
   if (!analysisClient) return { analysis: null, unavailable: "ANALYSIS_DISABLED" };
@@ -52,10 +53,14 @@ async function analyseCase({ pool, body, analysisClient, extractFacts }) {
   if (!statute) return { analysis: null, unavailable: "STATUTE_MISSING" };
 
   const precedents = Array.isArray(body.precedents) ? body.precedents.slice(0, 5) : [];
-  const elements = mapFactsToArticle13(extractFacts(redactedText));
+  const facts = extractFacts(redactedText);
+  const elements = mapFactsToArticle13(facts);
   let payload;
   try {
-    const result = await analysisClient.analyze({ statute, elements, description: redactedText, precedents });
+    const result = await analysisClient.analyze({
+      statute, elements, description: redactedText, precedents,
+      searchQuery: buildWebSearchQuery(facts),
+    });
     payload = result.analysis;
   } catch (error) {
     return { analysis: null, unavailable: error.code || "ANALYSIS_API_UNAVAILABLE" };
@@ -63,10 +68,17 @@ async function analyseCase({ pool, body, analysisClient, extractFacts }) {
 
   const allowed = new Set(precedents.map((item) => String(item?.caseNumber || "")).filter(Boolean));
   const checked = validateGroundedAnalysis(payload, allowed);
+
+  // The model writes each link as free text, so nothing about a web item is
+  // trusted until the page has answered for itself.
+  const shaped = validateWebCases(payload?.webCases);
+  const verified = shaped.cases.length > 0 ? await verifyWeb({ cases: shaped.cases }) : { cases: [] };
+
   return {
     statute: { lawName: statute.lawName, articleTitle: statute.articleTitle, body: statute.body, enforcedOn: statute.enforcedOn, officialUrl: statute.officialUrl },
     elements: elements.map(({ id, label, statuteQuote, mention, evidence }) => ({ id, label, statuteQuote, mention, evidence })),
     analysis: { overview: checked.overview, elementNotes: checked.elementNotes, precedentNotes: checked.precedentNotes, nextSteps: checked.nextSteps },
+    webCases: verified.cases,
     unavailable: null,
   };
 }
@@ -79,6 +91,7 @@ export function createSearchApiServer({
   intakeSessions = { createIntakeSession, answerIntakeSession, deleteIntakeSession, getIntakeSessionForCompletion },
   extractFacts = extractFactTags,
   buildQuestions = buildIntakeQuestions,
+  verifyWeb = verifyWebCases,
 }) {
   return http.createServer(async (request, response) => {
     const url = new URL(request.url, "http://localhost");
@@ -134,6 +147,7 @@ export function createSearchApiServer({
           body,
           analysisClient: consented ? analysisClient : null,
           extractFacts,
+          verifyWeb,
         }));
       }
 

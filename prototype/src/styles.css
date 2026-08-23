@@ -622,6 +622,16 @@ button { color: inherit; }
 .analysis-case { display: inline-block; margin-right: 6px; color: #4f3020; font-weight: 800; font-size: 11px; }
 .next-steps { margin: 0; padding-left: 19px; display: grid; gap: 9px; color: #3f4252; font-size: 13.5px; line-height: 1.75; }
 
+/* Posts strangers wrote. The card is deliberately the least authoritative thing
+   on the page: warmer border, warning above the list rather than below it. */
+.web-cases { border-color: #ddd0c4; background: #fbf7f3; }
+.web-cases-warning { margin: 0 0 14px !important; padding: 12px 14px; border-radius: 10px; border: 1px solid #e4d2c2; background: #fdf1e6; color: #6b4327 !important; font-size: 12.5px !important; }
+.web-case-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.web-case { padding: 14px 16px; border: 1px solid #e8ded3; border-radius: 12px; background: #fff; }
+.web-case-type { display: inline-block; margin-right: 8px; padding: 2px 7px; border-radius: 5px; background: #efe3d7; color: #6b4327; font-size: 10px; font-weight: 800; vertical-align: 2px; }
+.web-case a { color: #3d3a52; font-weight: 700; font-size: 13.5px; line-height: 1.6; }
+.web-case-quote { margin: 9px 0 0 !important; color: #4b4e5c !important; font-size: 12.5px !important; line-height: 1.75 !important; }
+
 /* The precedent card carried the same too-small body text. */
 .summary-list p { font-size: 12.5px !important; line-height: 1.8 !important; color: #43464f !important; }
 .summary-list span { font-size: 10px !important; }
@@ -632,6 +642,7 @@ button { color: inherit; }
 @media (max-width: 620px) {
   .analysis-card { padding: 16px; }
   .element-item { padding: 14px; }
+  .web-case { padding: 12px 13px; }
   .element-head { flex-direction: column; gap: 6px; }
   .screen-head h2 { font-size: 17px; }
   .deck-arrow { height: 50px; min-width: 50px; padding: 0 15px; font-size: 13px; }

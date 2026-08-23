@@ -462,9 +462,9 @@ const STATUTE_ROW = {
   officialUrl: "https://www.law.go.kr/법령/성폭력범죄의처벌등에관한특례법/제13조",
 };
 
-function analysisServer({ analysisClient, statute = STATUTE_ROW }) {
+function analysisServer({ analysisClient, statute = STATUTE_ROW, verifyWeb }) {
   const pool = { query: async () => ({ rows: statute ? [statute] : [] }) };
-  return createSearchApiServer({ pool, analysisClient });
+  return createSearchApiServer({ pool, analysisClient, ...(verifyWeb ? { verifyWeb } : {}) });
 }
 
 async function postAnalysis(port, body) {
@@ -579,4 +579,53 @@ test("POST /api/analysis reports why it has nothing instead of failing the page"
   const empty = await postAnalysis(server.address().port, { redactedText: "  ", allowExternalAi: true });
   assert.equal(empty.status, 400);
   assert.equal(empty.body.error, "INTAKE_INPUT_REQUIRED");
+});
+
+test("POST /api/analysis shows a web post only after the page has answered for itself", async (t) => {
+  // Two of these three never reach the network: one has no usable address, one
+  // copies a stranger's phone number out of their post.
+  const analysisClient = {
+    analyze: async () => ({
+      analysis: {
+        overview: [], elementNotes: [], precedentNotes: [], nextSteps: [],
+        webCases: [
+          { title: "게임 채팅 통매음 질문", url: "https://kin.naver.com/qna/detail.naver?docId=1", sourceType: "qna", quote: "게임 채팅으로 성적인 욕설을 들었다는 질문입니다." },
+          { title: "지어낸 글", url: "javascript:alert(1)", sourceType: "community", quote: "존재하지 않는 주소입니다." },
+          { title: "연락처가 적힌 글", url: "https://gall.dcinside.com/board/view/?id=a&no=2", sourceType: "community", quote: "상대가 010-1234-5678로 연락했다고 적혀 있습니다." },
+        ],
+      },
+    }),
+  };
+  const seen = [];
+  const verifyWeb = async ({ cases }) => {
+    seen.push(...cases.map((item) => item.url));
+    return { cases, dropped: [] };
+  };
+  const server = analysisServer({ analysisClient, verifyWeb });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const result = await postAnalysis(server.address().port, { redactedText: "게임 채팅으로 성적인 욕설을 들었습니다.", allowExternalAi: true });
+  assert.deepEqual(seen, ["https://kin.naver.com/qna/detail.naver?docId=1"]);
+  assert.deepEqual(result.body.webCases.map((item) => item.title), ["게임 채팅 통매음 질문"]);
+});
+
+test("POST /api/analysis sends the model a generalized query, not the user's sentences", async (t) => {
+  // Consent says the web search runs on the situation rather than the words the
+  // user wrote, so the query has to be built here rather than left to a model.
+  let received = null;
+  const analysisClient = {
+    analyze: async (input) => {
+      received = input;
+      return { analysis: { overview: [], elementNotes: [], precedentNotes: [], nextSteps: [], webCases: [] } };
+    },
+  };
+  const server = analysisServer({ analysisClient });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const description = "롤 게임 채팅으로 상대가 니애미 어쩌고 하는 성적인 욕설을 여러 번 보냈습니다.";
+  await postAnalysis(server.address().port, { redactedText: description, allowExternalAi: true });
+  assert.equal(received.searchQuery, "게임 채팅 성적 욕설 패드립 통매음 통신매체이용음란");
+  assert.equal(received.searchQuery.includes("니애미"), false);
 });

@@ -132,7 +132,7 @@ test("stops a submit that would drop an untranscribed capture", () => {
 test("requires explicit external AI consent and uses the private intake client", () => {
   // One checkbox now covers every external call, so its wording has to name all
   // of them — a consent narrower than what is sent is not consent.
-  assert.match(appSource, /OpenAI API로 전송해 의미 검색과 법조문 분석에 사용합니다/);
+  assert.match(appSource, /OpenAI API로 전송해 의미 검색, 법조문 분석, 비슷한 사례 웹 검색에 사용합니다/);
   assert.match(appSource, /AI 분석은 실행하지 않습니다/);
   assert.match(appSource, /allowExternalAi/);
   assert.match(appSource, /createIntake/);
@@ -168,4 +168,28 @@ test("shows the wait as steps rather than one stalled line", () => {
   assert.match(appSource, /검증된 공개 판례와 사실관계를 비교하고 있습니다/);
   // The timer is cleared, or leaving mid-search leaks an interval per search.
   assert.match(appSource, /return \(\) => clearInterval\(timer\)/);
+});
+
+test("marks posts strangers wrote as the least reliable thing on the page", () => {
+  // This is the section most readers will actually read. A community answer
+  // about whether something is a crime is wrong often enough that the warning
+  // sits above the list rather than under it.
+  assert.match(appSource, /개인이 인터넷에 쓴 글입니다\. 법적으로 정확하지 않을 수 있습니다/);
+  assert.match(appSource, /판단의 근거로 삼지 마시고, 참고만 하십시오/);
+  assert.match(appSource, /위 판례 화면의 기록과는 성격이 완전히 다릅니다/);
+  // The warning renders before the list it warns about.
+  assert.ok(appSource.indexOf("web-cases-warning") < appSource.indexOf("web-case-list"));
+  // Each link is labelled with where it came from, and opens away from us.
+  assert.match(appSource, /SOURCE_TYPE_LABEL\[item\.sourceType\]/);
+  assert.match(appSource, /rel="noopener noreferrer nofollow"/);
+  // The service says plainly which half is checked and which half is generated.
+  assert.match(appSource, /서버가 각 주소에 실제로 접속해 존재를 확인한 것만 남겼습니다/);
+  assert.match(appSource, /요약은 AI가 쓴 것이므로 원문을 직접 확인하십시오/);
+});
+
+test("keeps the web section from reading as a verdict", () => {
+  const panel = appSource.slice(appSource.indexOf("function WebCasesPanel"), appSource.indexOf("function AiSummaryPanel"));
+  for (const banned of ["해당됩니다", "성립합니다", "유죄", "무죄", "처벌받습니다"]) {
+    assert.equal(panel.includes(banned), false, `banned web copy: ${banned}`);
+  }
 });

@@ -349,8 +349,8 @@ function CaseComposer({
         />
         <span>
           <strong>AI 분석 사용</strong>
-          가려진 입력 문장을 OpenAI API로 전송해 의미 검색과 법조문 분석에 사용합니다.
-          <small>동의하지 않으면 키워드·사실 태그 검색만 사용하고 AI 분석은 실행하지 않습니다. 입력은 서비스 DB에 저장하지 않습니다.</small>
+          가려진 입력 문장을 OpenAI API로 전송해 의미 검색, 법조문 분석, 비슷한 사례 웹 검색에 사용합니다.
+          <small>동의하지 않으면 키워드·사실 태그 검색만 사용하고 AI 분석은 실행하지 않습니다. 웹 검색은 회원님 문장을 그대로 쓰지 않고 상황을 일반화한 검색어로 실행합니다. 입력은 서비스 DB에 저장하지 않습니다.</small>
         </span>
       </label>
       <div className="composer-notices" aria-label="서비스 안내">
@@ -640,8 +640,49 @@ function StatutePanel({ state }) {
   );
 }
 
+const SOURCE_TYPE_LABEL = {
+  community: "커뮤니티",
+  qna: "지식iN",
+  lawyer_qna: "변호사 Q&A",
+  blog: "블로그",
+  news: "뉴스",
+};
+
+/**
+ * Posts by people in the same situation, which is what most readers came for —
+ * and the least reliable thing on the page. The warning is not a footnote: a
+ * community answer about whether something is a crime is wrong often enough
+ * that a reader who takes one as an answer is worse off than before.
+ */
+function WebCasesPanel({ webCases }) {
+  if (!webCases?.length) return null;
+  return (
+    <div className="analysis-card web-cases">
+      <h3>비슷한 상황을 겪은 사람들의 글</h3>
+      <p className="web-cases-warning">
+        <strong>개인이 인터넷에 쓴 글입니다. 법적으로 정확하지 않을 수 있습니다.</strong>
+        {" "}판단의 근거로 삼지 마시고, 참고만 하십시오. 위 판례 화면의 기록과는 성격이 완전히 다릅니다.
+      </p>
+      <ul className="web-case-list">
+        {webCases.map((item) => (
+          <li key={item.url} className="web-case">
+            <span className="web-case-type">{SOURCE_TYPE_LABEL[item.sourceType] || "웹"}</span>
+            <a href={item.url} target="_blank" rel="noopener noreferrer nofollow">
+              {item.title} <span aria-hidden="true">↗</span>
+            </a>
+            <p className="web-case-quote"><span className="ai-tag">AI</span> {item.quote}</p>
+          </li>
+        ))}
+      </ul>
+      <p className="source-reminder">
+        AI가 웹에서 찾아온 글이며, 서버가 각 주소에 실제로 접속해 존재를 확인한 것만 남겼습니다. 요약은 AI가 쓴 것이므로 원문을 직접 확인하십시오.
+      </p>
+    </div>
+  );
+}
+
 function AiSummaryPanel({ state }) {
-  const { analysis } = state;
+  const { analysis, webCases } = state;
   if (!analysis) return <AnalysisPlaceholder state={state} />;
 
   return (
@@ -668,6 +709,8 @@ function AiSummaryPanel({ state }) {
           <p className="source-reminder">자료를 정리하는 방법에 관한 안내이며, 법적 조치를 권하는 것이 아닙니다.</p>
         </div>
       )}
+
+      <WebCasesPanel webCases={webCases} />
     </>
   );
 }
@@ -694,7 +737,7 @@ function ResultDeck({ precedents, resultCount, analysisState }) {
   const [index, setIndex] = useState(0);
   const [direction, setDirection] = useState("forward");
   const deckRef = useRef(null);
-  const state = analysisState || { loading: false, statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_DISABLED" };
+  const state = analysisState || { loading: false, statute: null, elements: [], analysis: null, webCases: [], unavailable: "ANALYSIS_DISABLED" };
 
   function go(next) {
     if (next < 0 || next >= RESULT_SCREENS.length) return;
@@ -930,7 +973,7 @@ export function App() {
 
   async function requestAnalysis({ redactedText, precedents }) {
     const token = ++analysisTokenRef.current;
-    setAnalysisState({ loading: true, statute: null, elements: [], analysis: null, unavailable: null });
+    setAnalysisState({ loading: true, statute: null, elements: [], analysis: null, webCases: [], unavailable: null });
     const next = await analyseCase({ redactedText, precedents, allowExternalAi });
     // A new case may have started while this was in flight.
     if (token !== analysisTokenRef.current) return;

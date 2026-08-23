@@ -1,5 +1,6 @@
 const ELEMENT_IDS = new Set(["purpose", "medium", "expression", "reached"]);
 const MENTIONS = new Set(["present", "absent", "unclear"]);
+const SOURCE_TYPES = new Set(["community", "qna", "lawyer_qna", "blog", "news"]);
 
 function cleanSentences(value, limit) {
   return (Array.isArray(value) ? value : [])
@@ -40,6 +41,22 @@ function mapElements(value) {
  * Kept separate from the search so the precedent cards render without waiting,
  * and so a failure here leaves those cards untouched.
  */
+function mapWebCases(value) {
+  return (Array.isArray(value) ? value : [])
+    .filter((item) => SOURCE_TYPES.has(item?.sourceType)
+      && typeof item?.url === "string"
+      && /^https?:\/\//.test(item.url)
+      && typeof item?.title === "string" && item.title.trim()
+      && typeof item?.quote === "string" && item.quote.trim())
+    .map((item) => ({
+      title: item.title.trim(),
+      url: item.url,
+      sourceType: item.sourceType,
+      quote: item.quote.trim(),
+    }))
+    .slice(0, 6);
+}
+
 export async function analyseCase({
   redactedText,
   precedents = [],
@@ -68,17 +85,17 @@ export async function analyseCase({
       signal,
     });
   } catch {
-    return { statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_API_UNAVAILABLE" };
+    return { statute: null, elements: [], analysis: null, webCases: [], unavailable: "ANALYSIS_API_UNAVAILABLE" };
   }
   if (!response.ok) {
-    return { statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_API_UNAVAILABLE" };
+    return { statute: null, elements: [], analysis: null, webCases: [], unavailable: "ANALYSIS_API_UNAVAILABLE" };
   }
 
   let payload;
   try {
     payload = await response.json();
   } catch {
-    return { statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_RESPONSE_INVALID" };
+    return { statute: null, elements: [], analysis: null, webCases: [], unavailable: "ANALYSIS_RESPONSE_INVALID" };
   }
 
   const allowed = new Set(precedents.map((item) => item.caseNumber));
@@ -98,6 +115,8 @@ export async function analyseCase({
         nextSteps: cleanSentences(payload.analysis.nextSteps, 5),
       }
       : null,
+    // Every link here was fetched by the server before it was returned.
+    webCases: mapWebCases(payload?.webCases),
     unavailable: payload?.unavailable || null,
   };
 }
