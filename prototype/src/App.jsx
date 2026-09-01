@@ -34,7 +34,7 @@ const FACT_LABELS = {
   repetition: { once: "한 차례", repeated: "반복", unknown: "횟수 미확인" },
 };
 
-function SideNavigation({ view, onHome }) {
+function SideNavigation({ view, onNewCase }) {
   const items = [
     { icon: "⌂", label: "사례 분석", active: true },
     { icon: "◎", label: "판례 범위" },
@@ -44,7 +44,7 @@ function SideNavigation({ view, onHome }) {
 
   return (
     <aside className="side-navigation" aria-label="주요 메뉴">
-      <button className="brand-mark" type="button" onClick={onHome} aria-label="판례AI 홈">
+      <button className="brand-mark" type="button" onClick={onNewCase} aria-label="판례AI 홈">
         <span className="brand-spark">✦</span>
       </button>
       <nav className="nav-stack">
@@ -53,7 +53,7 @@ function SideNavigation({ view, onHome }) {
             className={`nav-item ${item.active ? "is-active" : ""}`}
             key={item.label}
             type="button"
-            onClick={item.active ? onHome : undefined}
+            onClick={item.active ? onNewCase : undefined}
             aria-current={item.active && view === "home" ? "page" : undefined}
             title={item.label}
           >
@@ -72,10 +72,10 @@ function SideNavigation({ view, onHome }) {
   );
 }
 
-function TopBar({ view, onHome, availableCount }) {
+function TopBar({ onNewCase, availableCount }) {
   return (
     <header className="top-bar">
-      <button className="product-switcher" type="button" onClick={onHome}>
+      <button className="product-switcher" type="button" onClick={onNewCase}>
         <span className="tiny-spark" aria-hidden="true">✦</span>
         <span>판례AI · 통매음</span>
         <span className="chevron" aria-hidden="true">⌄</span>
@@ -85,11 +85,6 @@ function TopBar({ view, onHome, availableCount }) {
           <span className="status-dot" aria-hidden="true" />
           {availableCount == null ? "공식 판례 DB 연결" : `공식 판례 ${availableCount}건 검색 가능`}
         </div>
-        {view === "results" && (
-          <button className="new-case-button" type="button" onClick={onHome}>
-            <span aria-hidden="true">＋</span> 새 사례
-          </button>
-        )}
       </div>
     </header>
   );
@@ -554,12 +549,12 @@ function Coverage({ resultCount, coverage }) {
   );
 }
 
-function EmptyResults({ onHome, availableCount }) {
+function EmptyResults({ onRevise, availableCount }) {
   return (
     <div className="empty-results">
       <div className="empty-orb" aria-hidden="true">∅</div>
       <p>검색 가능한 {availableCount}건 전부와 비교했지만 기준 이상인 판례가 없었습니다. 없는 판례를 만들어 보여주지 않습니다.</p>
-      <button type="button" onClick={onHome}>사례를 더 구체적으로 작성하기</button>
+      <button type="button" onClick={onRevise}>사례를 더 구체적으로 작성하기</button>
     </div>
   );
 }
@@ -823,7 +818,7 @@ const RESULT_SCREENS = [
  * one animates, so the deck is as tall as what is on screen rather than as
  * tall as its longest screen.
  */
-function ResultDeck({ precedents, resultCount, analysisState, webCasesState }) {
+function ResultDeck({ precedents, resultCount, analysisState, webCasesState, onNewCase }) {
   const [index, setIndex] = useState(0);
   const [direction, setDirection] = useState("forward");
   const deckRef = useRef(null);
@@ -916,12 +911,19 @@ function ResultDeck({ precedents, resultCount, analysisState, webCasesState }) {
         ))}
 
       </div>
+
+      <div className="deck-footer">
+        <button className="new-case-button" type="button" onClick={onNewCase}>
+          다른 사례 검색하기
+        </button>
+        <p>지금 입력한 내용과 결과는 지워집니다.</p>
+      </div>
     </div>
   );
 }
 
 
-function ResultsView({ description, results, coverage, searchFailed, onRetry, onHome, resultsStartRef, analysisState, webCasesState }) {
+function ResultsView({ description, results, coverage, searchFailed, onRetry, onRevise, onNewCase, resultsStartRef, analysisState, webCasesState }) {
   const [showAll, setShowAll] = useState(false);
   const facts = useMemo(() => extractCaseFacts(description), [description]);
   const visibleResults = showAll ? results : results.slice(0, 3);
@@ -936,7 +938,7 @@ function ResultsView({ description, results, coverage, searchFailed, onRetry, on
   return (
     <section className="results-view" ref={resultsStartRef}>
       <div className="results-header">
-        <button className="back-button" type="button" onClick={onHome}><span aria-hidden="true">←</span> 입력으로 돌아가기</button>
+        <button className="back-button" type="button" onClick={onRevise}><span aria-hidden="true">←</span> 입력으로 돌아가기</button>
         {/*
           A failed search compared nothing. The heading used to announce
           "사실관계가 닮은 판례" over an error panel, above chips the browser had
@@ -972,7 +974,7 @@ function ResultsView({ description, results, coverage, searchFailed, onRetry, on
         <ResultDeck
           precedents={(
             results.length === 0
-              ? <EmptyResults onHome={onHome} availableCount={coverage.availableCount} />
+              ? <EmptyResults onRevise={onRevise} availableCount={coverage.availableCount} />
               : (
                 <div className="results-list">
                   {visibleResults.map((result, index) => <PrecedentCard result={result} rank={index + 1} key={result.id} />)}
@@ -987,6 +989,7 @@ function ResultsView({ description, results, coverage, searchFailed, onRetry, on
           resultCount={results.length}
           analysisState={analysisState}
           webCasesState={webCasesState}
+          onNewCase={onNewCase}
         />
       )}
     </section>
@@ -1207,9 +1210,9 @@ export function App() {
   return (
     <div className="page-background">
       <div className={`app-shell ${view === "home" ? "is-home" : "has-results"}`}>
-        <SideNavigation view={view} onHome={startNewCase} />
+        <SideNavigation view={view} onNewCase={startNewCase} />
         <div className="app-content">
-          <TopBar view={view} onHome={startNewCase} availableCount={coverage.availableCount} />
+          <TopBar onNewCase={startNewCase} availableCount={coverage.availableCount} />
           <main className="main-content">
             <HomeView
               key={caseKey}
@@ -1235,7 +1238,8 @@ export function App() {
                 coverage={coverage}
                 searchFailed={searchFailed}
                 onRetry={retrySearch}
-                onHome={goHome}
+                onRevise={goHome}
+                onNewCase={startNewCase}
                 resultsStartRef={resultsStartRef}
                 analysisState={analysisState}
                 webCasesState={webCasesState}

@@ -249,3 +249,27 @@ test("says in the heading when nothing was found", () => {
   assert.match(empty, /검색 가능한 \{availableCount\}건 전부와 비교했지만/);
   assert.match(empty, /없는 판례를 만들어 보여주지 않습니다/);
 });
+
+test("offers the next search where a reader finishes, not in the corner", () => {
+  // It was a small button in the top right, furthest from anything being read.
+  // It now ends the deck, so it lands after whichever screen is open — the
+  // reader who only looks at the precedents meets it as surely as the one who
+  // reads to the last panel.
+  assert.match(appSource, /<div className="deck-footer">/);
+  assert.match(appSource, /className="new-case-button" type="button" onClick=\{onNewCase\}/);
+  assert.match(appSource, /다른 사례 검색하기/);
+  // Says what it costs, because it throws the case away.
+  assert.match(appSource, /지금 입력한 내용과 결과는 지워집니다/);
+  // Gone from the header.
+  const topBar = appSource.slice(appSource.indexOf("function TopBar"), appSource.indexOf("function HomeView"));
+  assert.equal(topBar.includes("new-case-button"), false);
+});
+
+test("names the two ways back for what they each do", () => {
+  // Both were passed as onHome while doing different things: one wipes the
+  // case, the other scrolls back with the input intact so it can be rewritten.
+  assert.equal(appSource.includes("onHome"), false);
+  assert.match(appSource, /onRevise=\{goHome\}/);
+  assert.match(appSource, /onNewCase=\{startNewCase\}/);
+  assert.match(appSource, /<EmptyResults onRevise=\{onRevise\}/);
+});
