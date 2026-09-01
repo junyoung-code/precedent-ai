@@ -4,6 +4,7 @@ import {
   WEB_BATCH_SIZE, WEB_MEDIUMS, buildWebSearchQuery, selectWebCases, tidyTitle, validateWebCases, verifyWebCases,
 } from "../server/web-cases.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
+import { USER_AGENT } from "../server/robots.mjs";
 
 const ok = {
   title: "게임하다 1대1채팅으로 패드립과 성드립을 들었습니다",
@@ -219,4 +220,43 @@ test("shows fewer posts rather than posts about a different medium", () => {
 
   // A reader whose own medium could not be read is not narrowed at all.
   assert.equal(selectWebCases({ cases, facts: { medium: "unknown", expressionType: "insult_with_sexual_terms" } }).length, 3);
+});
+
+test("does not open a page the site asked us not to", async () => {
+  // A page we may not read is a page we cannot vouch for, and every link on
+  // screen is one this server opened once. So it is dropped, not shown
+  // unverified — and the fetch never goes out at all.
+  const opened = [];
+  const fetchImpl = async (url) => {
+    opened.push(url);
+    return { ok: true, text: async () => "<h1>게임하다 1대1채팅으로 패드립과 성드립을 들었습니다</h1>" };
+  };
+  const cases = [
+    { ...ok, url: "https://www.lawtalk.co.kr/qna/193707" },
+    { ...ok, url: "https://www.lawtalk.co.kr/terms-of-service/" },
+  ];
+  const result = await verifyWebCases({
+    cases,
+    fetchImpl,
+    allowFetch: async ({ url }) => !url.includes("/terms-of-service/"),
+  });
+  assert.deepEqual(result.cases.map((item) => item.url), ["https://www.lawtalk.co.kr/qna/193707"]);
+  assert.deepEqual(result.dropped, ["disallowed"]);
+  assert.deepEqual(opened, ["https://www.lawtalk.co.kr/qna/193707"]);
+});
+
+test("tells the site who is asking", async () => {
+  // The check used to send a Chrome string, which is not an answer to a site
+  // that names individual bots in its robots.txt.
+  let agent = null;
+  await verifyWebCases({
+    cases: [ok],
+    allowFetch: async () => true,
+    fetchImpl: async (url, options) => {
+      agent = options?.headers?.["user-agent"];
+      return { ok: true, text: async () => ok.title };
+    },
+  });
+  assert.equal(agent, USER_AGENT);
+  assert.equal(String(agent).toLowerCase().includes("mozilla"), false);
 });

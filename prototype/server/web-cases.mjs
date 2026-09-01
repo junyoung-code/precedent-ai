@@ -1,4 +1,5 @@
 import { compareFactTags } from "../src/lib/fact-tags.js";
+import { USER_AGENT, mayFetch } from "./robots.mjs";
 import { redactSensitiveText } from "../src/lib/privacy-redaction.js";
 
 export const WEB_SOURCE_TYPES = ["community", "qna", "lawyer_qna", "blog", "news"];
@@ -138,14 +139,21 @@ function words(value) {
  * check them against except the page itself. An unreachable link, or one whose
  * text carries little of the reported title, is a link we cannot vouch for.
  */
-export async function verifyWebCases({ cases, fetchImpl = fetch, timeoutMs = 8_000, minOverlap = 0.6 } = {}) {
+export async function verifyWebCases({ cases, fetchImpl = fetch, timeoutMs = 8_000, minOverlap = 0.6, allowFetch = mayFetch } = {}) {
   const dropped = [];
   const checked = await Promise.all((cases || []).map(async (item) => {
+    // Ask before opening. A page we are not allowed to read is a page we cannot
+    // vouch for, so it is dropped rather than shown unverified — the whole
+    // point of this step is that every link on screen was opened once.
+    if (!(await allowFetch({ url: item.url, fetchImpl, timeoutMs }))) {
+      return { item, drop: "disallowed" };
+    }
+
     let response;
     try {
       response = await fetchImpl(item.url, {
         redirect: "follow",
-        headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "accept-language": "ko" },
+        headers: { "user-agent": USER_AGENT, "accept-language": "ko" },
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch {
