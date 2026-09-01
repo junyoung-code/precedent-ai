@@ -241,8 +241,16 @@ button { color: inherit; }
 .capture-notice { margin-top: 10px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #e6c9a8; border-radius: 11px; background: #fdf5ea; }
 .capture-notice p { margin: 0; color: #7a4f22; font-size: 12px; }
 .capture-notice button { flex: 0 0 auto; height: 32px; padding: 0 12px; border: 1px solid #dcc0a2; border-radius: 9px; background: #fff; color: #7a4f22; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
-.intake-questions { display: grid; gap: 13px; }
-.intake-questions h2 { margin: 0; font-size: 17px; }
+.intake-questions { display: grid; gap: 18px; padding: 22px !important; }
+/* The heading was 17px against 15px labels, so the panel read as one block of
+   text with no way in. It now leads clearly, and the examples that used to sit
+   inside each question have their own quieter line. */
+.intake-head { display: grid; gap: 5px; padding-bottom: 4px; border-bottom: 1px solid #efe4d9; }
+.intake-questions h2 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -.01em; color: #2f2118; }
+.intake-head p { margin: 0; color: #7c6a5e; font-size: 12.5px; line-height: 1.6; }
+.intake-questions label { gap: 4px !important; }
+.intake-prompt { font-size: 15px; font-weight: 700; color: #2f2118; line-height: 1.5; }
+.intake-hint { margin-bottom: 3px; color: #8a7768; font-size: 12px; font-weight: 500; line-height: 1.5; }
 .intake-actions { margin-top: 3px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .intake-actions button:first-child { height: 40px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: #735c4e; font: inherit; font-size: 12px; cursor: pointer; }
 .intake-actions button:first-child:hover { background: #f4ece5; }

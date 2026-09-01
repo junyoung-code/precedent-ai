@@ -193,7 +193,7 @@ export function createSearchApiServer({
         const body = await readJson(request);
         if (!["victim", "reported"].includes(body.role) || !String(body.redactedText || "").trim()) throw intakeInputError();
         const facts = extractFacts(body.redactedText);
-        const questions = buildQuestions(facts);
+        const questions = buildQuestions(facts, { role: body.role });
         const session = await intakeSessions.createIntakeSession({
           pool,
           role: body.role,

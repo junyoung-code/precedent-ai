@@ -334,9 +334,18 @@ function CaseComposer({
         </div>}
       </section>}
       {intake.questions.length > 0 && <section className="intake-questions" aria-label="추가 사실 확인">
-        <h2>몇 가지만 더 확인할게요</h2>
-        {intake.questions.map((question) => <label key={question.id} htmlFor={`intake-${question.id}`}>{question.prompt}
-          <input id={`intake-${question.id}`} value={answers[question.id] || ""} onChange={(event) => setAnswers({ ...answers, [question.id]: event.target.value })} />
+        <div className="intake-head">
+          <h2>몇 가지만 더 확인할게요</h2>
+          <p>적어주신 내용에서 읽어내지 못한 것만 여쭙습니다. 모르시면 비워두셔도 됩니다.</p>
+        </div>
+        {intake.questions.map((question) => <label key={question.id} htmlFor={`intake-${question.id}`}>
+          <span className="intake-prompt">{question.prompt}</span>
+          {question.hint && <span className="intake-hint">{question.hint}</span>}
+          <input
+            id={`intake-${question.id}`}
+            value={answers[question.id] || ""}
+            onChange={(event) => setAnswers({ ...answers, [question.id]: event.target.value })}
+          />
         </label>)}
         <div className="intake-actions"><button type="button" onClick={onCancelIntake}>취소하고 입력 지우기</button><button type="button" className="analyze-button intake-complete" disabled={analyzing} onClick={() => onSubmitAnswers(answers)}>확인 후 검색</button></div>
       </section>}
