@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  WEB_BATCH_SIZE, WEB_MEDIUMS, buildWebSearchQuery, selectWebCases, tidyTitle, validateWebCases, verifyWebCases,
+  WEB_BATCH_SIZE, WEB_CASE_DISPLAY_LIMIT, WEB_MEDIUMS, WEB_SOURCE_TYPES, buildWebSearchQuery, selectWebCases, tidyTitle, validateWebCases, verifyWebCases,
 } from "../server/web-cases.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
 import { USER_AGENT } from "../server/robots.mjs";
@@ -259,4 +259,24 @@ test("tells the site who is asking", async () => {
   });
   assert.equal(agent, USER_AGENT);
   assert.equal(String(agent).toLowerCase().includes("mozilla"), false);
+});
+
+test("keeps one copy of the vocabulary the screen and the server share", async () => {
+  // The source types were written out three times and the display count twice,
+  // as 3 on the server and 6 in the browser. Neither had gone wrong yet, but a
+  // number kept in two places is one that gets changed in one.
+  const vocab = await import("../src/lib/web-case-vocab.js");
+  assert.equal(WEB_SOURCE_TYPES, vocab.WEB_SOURCE_TYPES, "서버가 자기 목록을 따로 들고 있습니다");
+  assert.equal(WEB_CASE_DISPLAY_LIMIT, vocab.WEB_CASE_DISPLAY_LIMIT);
+
+  // Every type the model may return has a Korean label, or a source arrives
+  // with nothing to show for it.
+  for (const type of vocab.WEB_SOURCE_TYPES) {
+    assert.equal(typeof vocab.WEB_SOURCE_TYPE_LABEL[type], "string", type);
+  }
+  assert.equal(Object.keys(vocab.WEB_SOURCE_TYPE_LABEL).length, vocab.WEB_SOURCE_TYPES.length);
+
+  // The batch has to stay larger than the display, or picking per reader does
+  // nothing at all.
+  assert.ok(WEB_BATCH_SIZE > vocab.WEB_CASE_DISPLAY_LIMIT);
 });

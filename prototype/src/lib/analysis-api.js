@@ -1,6 +1,8 @@
+import { WEB_CASE_DISPLAY_LIMIT, WEB_SOURCE_TYPES } from "./web-case-vocab.js";
+
 const ELEMENT_IDS = new Set(["purpose", "medium", "expression", "reached"]);
 const MENTIONS = new Set(["present", "absent", "unclear"]);
-const SOURCE_TYPES = new Set(["community", "qna", "lawyer_qna", "blog", "news"]);
+const SOURCE_TYPES = new Set(WEB_SOURCE_TYPES);
 
 function cleanSentences(value, limit) {
   return (Array.isArray(value) ? value : [])
@@ -54,7 +56,8 @@ function mapWebCases(value) {
       sourceType: item.sourceType,
       quote: item.quote.trim(),
     }))
-    .slice(0, 6);
+    // A last check on what arrived, not a second display rule.
+    .slice(0, WEB_CASE_DISPLAY_LIMIT);
 }
 
 /**

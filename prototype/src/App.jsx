@@ -3,6 +3,7 @@ import { extractCaseFacts } from "./lib/search.js";
 import { redactSensitiveText } from "./lib/privacy-redaction.js";
 import { abandonIntake, answerIntake, cancelIntake, completeIntake, createIntake } from "./lib/intake-api.js";
 import { analyseCase, fetchWebCases } from "./lib/analysis-api.js";
+import { WEB_SOURCE_TYPE_LABEL } from "./lib/web-case-vocab.js";
 
 const FACT_LABELS = {
   medium: {
@@ -699,14 +700,6 @@ function StatutePanel({ state }) {
   );
 }
 
-const SOURCE_TYPE_LABEL = {
-  community: "커뮤니티",
-  qna: "지식iN",
-  lawyer_qna: "변호사 Q&A",
-  blog: "블로그",
-  news: "뉴스",
-};
-
 /**
  * Posts by people in the same situation, which is what most readers came for —
  * and the least reliable thing on the page. The warning is not a footnote: a
@@ -737,7 +730,7 @@ function WebCasesPanel({ state }) {
       <ul className="web-case-list">
         {webCases.map((item) => (
           <li key={item.url} className="web-case">
-            <span className="web-case-type">{SOURCE_TYPE_LABEL[item.sourceType] || "웹"}</span>
+            <span className="web-case-type">{WEB_SOURCE_TYPE_LABEL[item.sourceType] || "웹"}</span>
             <a href={item.url} target="_blank" rel="noopener noreferrer nofollow">
               {item.title} <span aria-hidden="true">↗</span>
             </a>

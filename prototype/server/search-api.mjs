@@ -132,7 +132,7 @@ async function readWebCases({ pool, body, analysisClient, extractFacts, readWeb 
   // Passing no client is what stops a stale row from starting a paid refresh.
   const cached = await readWeb({ pool, client: offline ? null : analysisClient, queryKey });
   return {
-    webCases: selectWebCases({ cases: cached.cases, facts, role: body.role || null, limit: 3 }),
+    webCases: selectWebCases({ cases: cached.cases, facts, role: body.role || null }),
     fetchedAt: cached.fetchedAt ? new Date(cached.fetchedAt).toISOString() : null,
     fixture: offline || undefined,
     unavailable: cached.cases.length === 0 ? "WEB_CASES_EMPTY" : null,

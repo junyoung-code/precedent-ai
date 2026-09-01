@@ -1,8 +1,10 @@
 import { compareFactTags } from "../src/lib/fact-tags.js";
+import { WEB_CASE_DISPLAY_LIMIT, WEB_SOURCE_TYPES } from "../src/lib/web-case-vocab.js";
 import { USER_AGENT, mayFetch } from "./robots.mjs";
 import { redactSensitiveText } from "../src/lib/privacy-redaction.js";
 
-export const WEB_SOURCE_TYPES = ["community", "qna", "lawyer_qna", "blog", "news"];
+// Re-exported so callers that already read this module keep one import.
+export { WEB_CASE_DISPLAY_LIMIT, WEB_SOURCE_TYPES };
 
 // Who the post was written by. Two people can describe the same facts and want
 // completely different reading: one is asking how to report, the other how to
@@ -221,7 +223,7 @@ const EXPRESSION_WORDS = {
  * full fact comparison the precedent cards already use, rather than on a
  * model's reading of a sentence.
  */
-export function selectWebCases({ cases, facts = {}, role = null, limit = 3 } = {}) {
+export function selectWebCases({ cases, facts = {}, role = null, limit = WEB_CASE_DISPLAY_LIMIT } = {}) {
   const readerMedium = facts.medium && facts.medium !== "unknown" ? facts.medium : null;
 
   const scored = (cases || []).map((item, index) => {
