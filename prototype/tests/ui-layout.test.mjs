@@ -61,3 +61,15 @@ test("separates quoted law, applied rule, and generated text by size and weight"
   // Generated wording carries a label of its own.
   assert.match(css, /\.ai-tag \{/);
 });
+
+test("keeps the shell's corners round once the result page stops clipping", () => {
+  // The shell rounds its corners and relies on overflow: hidden to clip its
+  // children to them. A result page has to let the deck arrows sit outside the
+  // card, so it switches to overflow: visible — and the sidebar's square
+  // background then painted straight over the two left corners, which is what
+  // it looked like after scrolling back up from a search.
+  assert.match(css, /\.app-shell\.has-results \{[^}]*overflow:\s*visible/);
+  // The base rule, not the .app-shell.is-home override that precedes it.
+  const nav = css.slice(css.indexOf("\n.side-navigation {"));
+  assert.match(nav.slice(0, nav.indexOf("}")), /border-radius:\s*25px 0 0 25px/);
+});

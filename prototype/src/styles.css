@@ -59,6 +59,12 @@ button { color: inherit; }
   align-items: center;
   border-right: 1px solid var(--line);
   background: rgba(255, 253, 250, 0.98);
+  /* The shell rounds its corners and clips to them, but a result page has to
+     let the deck arrows sit outside the card, so it switches to overflow:
+     visible — and this square background then paints straight over the two
+     left corners. It follows the shell's radius instead of relying on the
+     clip. 25px is 26 less the shell's 1px border. */
+  border-radius: 25px 0 0 25px;
 }
 
 .brand-mark {
