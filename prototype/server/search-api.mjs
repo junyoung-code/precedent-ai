@@ -6,6 +6,7 @@ import { validateGroundedAnalysis } from "./grounded-analysis.mjs";
 import { buildWebSearchQuery, selectWebCases } from "./web-cases.mjs";
 import { readWebCasesWithRefresh } from "./web-case-refresh.mjs";
 import { resolveEntitlement } from "./entitlements.mjs";
+import { buildFixtureAnalysis, readAnalysisFixture } from "./offline-mode.mjs";
 import { mapFactsToArticle13 } from "./statute-elements.mjs";
 import { COMMUNICATION_OBSCENITY_ARTICLE, readStatuteArticle } from "./statutes.mjs";
 import { buildIntakeQuestions } from "./intake-questions.mjs";
@@ -48,7 +49,7 @@ function intakeInputError() {
  * in a second and must not wait on a model that takes ten. Nothing here is
  * stored — the description arrives, is analysed, and is gone with the response.
  */
-async function analyseCase({ pool, body, analysisClient, extractFacts, entitlement = { analysis: true } }) {
+async function analyseCase({ pool, body, analysisClient, extractFacts, entitlement = { analysis: true }, offline = false }) {
   const redactedText = String(body.redactedText || "").trim();
   if (!redactedText) throw intakeInputError();
   if (!analysisClient) return { analysis: null, unavailable: "ANALYSIS_DISABLED" };
@@ -70,6 +71,18 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, entitleme
   // model writes are behind the gate — and they are not written at all.
   if (!entitlement.analysis) {
     return { statute: publicStatute, elements: publicElements, analysis: null, unavailable: entitlement.reason };
+  }
+
+  // Offline: the same shape, from a response we already paid for once.
+  if (offline) {
+    const fixture = await readAnalysisFixture();
+    return {
+      statute: publicStatute,
+      elements: publicElements,
+      analysis: buildFixtureAnalysis(fixture, precedents.map((item) => item.caseNumber).filter(Boolean)),
+      fixture: true,
+      unavailable: null,
+    };
   }
 
   let payload;
@@ -109,17 +122,19 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, entitleme
  * it lands with the precedent cards instead of behind a model that takes ten
  * seconds, and a reader without a plan still gets it.
  */
-async function readWebCases({ pool, body, analysisClient, extractFacts, readWeb = readWebCasesWithRefresh }) {
+async function readWebCases({ pool, body, analysisClient, extractFacts, readWeb = readWebCasesWithRefresh, offline = false }) {
   const redactedText = String(body.redactedText || "").trim();
   if (!redactedText) throw intakeInputError();
   if (body.allowExternalAi !== true) return { webCases: [], fetchedAt: null, unavailable: "ANALYSIS_DISABLED" };
 
   const facts = extractFacts(redactedText);
   const queryKey = buildWebSearchQuery(facts);
-  const cached = await readWeb({ pool, client: analysisClient, queryKey });
+  // Passing no client is what stops a stale row from starting a paid refresh.
+  const cached = await readWeb({ pool, client: offline ? null : analysisClient, queryKey });
   return {
     webCases: selectWebCases({ cases: cached.cases, facts, role: body.role || null, limit: 3 }),
     fetchedAt: cached.fetchedAt ? new Date(cached.fetchedAt).toISOString() : null,
+    fixture: offline || undefined,
     unavailable: cached.cases.length === 0 ? "WEB_CASES_EMPTY" : null,
   };
 }
@@ -148,6 +163,8 @@ export function createSearchApiServer({
   buildQuestions = buildIntakeQuestions,
   entitlements = resolveEntitlement,
   readWeb = readWebCasesWithRefresh,
+  // Nothing external is called at all: no model, no embedding, no refresh.
+  offline = false,
   // Off unless asked for. It is a window onto spending, not something a
   // deployed service should answer to anyone who guesses the path.
   devDashboard = false,
@@ -202,7 +219,9 @@ export function createSearchApiServer({
           const session = await intakeSessions.getIntakeSessionForCompletion({ pool, sessionId });
           const query = [session.redactedText, ...Object.values(session.answers)].join("\n");
           const normalized = normalizeSearchQuery(query, body.limit);
-          const requestEmbeddingClient = body.allowExternalAi === true ? meteredEmbeddingClient({ client: embeddingClient, pool }) : null;
+          const requestEmbeddingClient = !offline && body.allowExternalAi === true
+            ? meteredEmbeddingClient({ client: embeddingClient, pool })
+            : null;
           const result = await search({ pool, query: normalized.text, limit: normalized.limit, embeddingClient: requestEmbeddingClient });
           return sendJson(response, 200, result);
         } finally {
@@ -221,13 +240,14 @@ export function createSearchApiServer({
           analysisClient: consented ? analysisClient : null,
           extractFacts,
           entitlement: entitlements(),
+          offline,
         }));
       }
 
       if (request.method === "POST" && url.pathname === "/api/web-cases") {
         const body = await readJson(request);
         return sendJson(response, 200, await readWebCases({
-          pool, body, analysisClient, extractFacts, readWeb,
+          pool, body, analysisClient, extractFacts, readWeb, offline,
         }));
       }
 
@@ -241,7 +261,9 @@ export function createSearchApiServer({
       }
       const body = await readJson(request);
       const normalized = normalizeSearchQuery(body.query, body.limit);
-      const requestEmbeddingClient = body.allowExternalAi === true ? meteredEmbeddingClient({ client: embeddingClient, pool }) : null;
+      const requestEmbeddingClient = !offline && body.allowExternalAi === true
+        ? meteredEmbeddingClient({ client: embeddingClient, pool })
+        : null;
       const result = await search({
         pool,
         query: normalized.text,

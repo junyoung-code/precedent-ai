@@ -787,6 +787,23 @@ function AiSummaryPanel({ state }) {
   );
 }
 
+/**
+ * Says out loud that the text on screen came from a stored response.
+ *
+ * Offline mode exists so the screens can be opened a hundred times for free,
+ * which also means a hundred chances to read canned sentences as a real result
+ * or to put one in a screenshot. It is fixed to the corner rather than in the
+ * flow so it never moves the layout being worked on.
+ */
+function OfflineBadge({ shown }) {
+  if (!shown) return null;
+  return (
+    <p className="offline-badge" role="status">
+      오프라인 모드 · 저장된 응답입니다
+    </p>
+  );
+}
+
 function motionBehavior() {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 }
@@ -1197,6 +1214,7 @@ export function App() {
               onCancelIntake={cancelCurrentIntake}
               homeStartRef={homeStartRef}
             />
+            <OfflineBadge shown={analysisState?.fixture === true || webCasesState?.fixture === true} />
             {view === "results" && (
               <ResultsView
                 description={submittedDescription}

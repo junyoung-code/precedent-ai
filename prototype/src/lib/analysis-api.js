@@ -78,6 +78,7 @@ export async function fetchWebCases({ redactedText, role = null, allowExternalAi
     return {
       webCases: mapWebCases(payload?.webCases),
       fetchedAt: typeof payload?.fetchedAt === "string" ? payload.fetchedAt : null,
+      fixture: payload?.fixture === true,
       unavailable: payload?.unavailable || null,
     };
   } catch {
@@ -143,6 +144,10 @@ export async function analyseCase({
         nextSteps: cleanSentences(payload.analysis.nextSteps, 5),
       }
       : null,
+    // Says the sentences came from a stored response rather than a model, so
+    // nothing offline can be mistaken for a real result or shipped in a
+    // screenshot as one.
+    fixture: payload?.fixture === true,
     unavailable: payload?.unavailable || null,
   };
 }

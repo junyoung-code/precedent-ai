@@ -684,3 +684,9 @@ button { color: inherit; }
   .deck-arrow.is-next .deck-arrow-mark { animation: none; }
   .deck-arrow, .deck-arrow-label { transition: none; }
 }
+
+/* Fixed to the corner so it never moves the layout being worked on. */
+.offline-badge { position: fixed; right: 14px; bottom: 14px; z-index: 40; margin: 0;
+  padding: 7px 12px; border: 1px solid #d8cfc4; border-radius: 999px; background: #fdf6ee;
+  color: #6b4327; font-size: 11.5px; font-weight: 700; box-shadow: 0 2px 10px rgba(35, 38, 58, .1); }
+@media print { .offline-badge { display: none !important; } }
