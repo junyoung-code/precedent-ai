@@ -228,3 +228,24 @@ test("keeps similar posts on the free side of the gate", () => {
   // Dated, because a cached batch is not what the web looks like right now.
   assert.match(appSource, /일 기준입니다/);
 });
+
+test("does not describe a result the search never got", () => {
+  // The heading announced "사실관계가 닮은 판례" over an error panel, above
+  // chips the browser had read out of the description — so a page that reached
+  // no server at all still showed 게임 채팅 and 반복 as if something matched.
+  const view = appSource.slice(appSource.indexOf("function ResultsView"));
+  const header = view.slice(0, view.indexOf("<ResultDeck"));
+  assert.match(header, /\{!searchFailed && \(\s*\n\s*<div className="results-title-row">/);
+  // The similarity disclaimer and the coverage bar describe a comparison too.
+  assert.match(header, /\{!searchFailed && \(\s*\n\s*<>\s*\n\s*<div className="legal-notice"/);
+  assert.doesNotMatch(header, /\{!searchFailed && <Coverage/);
+});
+
+test("says in the heading when nothing was found", () => {
+  assert.match(appSource, /results\.length === 0 \? "닮은 판례를 찾지 못했습니다" : "사실관계가 닮은 판례"/);
+  // The panel underneath explains rather than repeating the heading.
+  const empty = appSource.slice(appSource.indexOf("function EmptyResults"), appSource.indexOf("function ErrorResults"));
+  assert.doesNotMatch(empty, /<h2>/);
+  assert.match(empty, /검색 가능한 \{availableCount\}건 전부와 비교했지만/);
+  assert.match(empty, /없는 판례를 만들어 보여주지 않습니다/);
+});

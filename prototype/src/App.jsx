@@ -558,8 +558,7 @@ function EmptyResults({ onHome, availableCount }) {
   return (
     <div className="empty-results">
       <div className="empty-orb" aria-hidden="true">∅</div>
-      <h2>기준 이상으로 비슷한 판례가 없습니다</h2>
-      <p>현재 검색 가능한 {availableCount}건 안에서 기준 이상인 판례를 찾지 못했습니다. 없는 판례를 만들어 보여주지 않습니다.</p>
+      <p>검색 가능한 {availableCount}건 전부와 비교했지만 기준 이상인 판례가 없었습니다. 없는 판례를 만들어 보여주지 않습니다.</p>
       <button type="button" onClick={onHome}>사례를 더 구체적으로 작성하기</button>
     </div>
   );
@@ -938,24 +937,36 @@ function ResultsView({ description, results, coverage, searchFailed, onRetry, on
     <section className="results-view" ref={resultsStartRef}>
       <div className="results-header">
         <button className="back-button" type="button" onClick={onHome}><span aria-hidden="true">←</span> 입력으로 돌아가기</button>
-        <div className="results-title-row">
-          <div>
-            <p className="eyebrow">비교 결과</p>
-            <h1>사실관계가 닮은 판례</h1>
-            <div className="fact-chips">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
+        {/*
+          A failed search compared nothing. The heading used to announce
+          "사실관계가 닮은 판례" over an error panel, above chips the browser had
+          read out of the description — so a page that had reached no server at
+          all still displayed 게임 채팅 and 반복 as if something had been found.
+        */}
+        {!searchFailed && (
+          <div className="results-title-row">
+            <div>
+              <p className="eyebrow">비교 결과</p>
+              <h1>{results.length === 0 ? "닮은 판례를 찾지 못했습니다" : "사실관계가 닮은 판례"}</h1>
+              <div className="fact-chips">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
+            </div>
+            <button className="print-button" type="button" onClick={() => window.print()} aria-label="결과 저장">
+              <span aria-hidden="true">⇩</span>
+              <span className="print-button-label">결과 저장</span>
+            </button>
           </div>
-          <button className="print-button" type="button" onClick={() => window.print()} aria-label="결과 저장">
-            <span aria-hidden="true">⇩</span>
-            <span className="print-button-label">결과 저장</span>
-          </button>
-        </div>
+        )}
       </div>
 
-      <div className="legal-notice" role="note">
-        <span aria-hidden="true">!</span>
-        <div><strong>이 결과는 법적 판단이나 결과 예측이 아닙니다.</strong><p>숫자는 공개 판례와의 사실관계 유사도이며, 법적 결론이나 형량을 의미하지 않습니다.</p></div>
-      </div>
-      {!searchFailed && <Coverage resultCount={results.length} coverage={coverage} />}
+      {!searchFailed && (
+        <>
+          <div className="legal-notice" role="note">
+            <span aria-hidden="true">!</span>
+            <div><strong>이 결과는 법적 판단이나 결과 예측이 아닙니다.</strong><p>숫자는 공개 판례와의 사실관계 유사도이며, 법적 결론이나 형량을 의미하지 않습니다.</p></div>
+          </div>
+          <Coverage resultCount={results.length} coverage={coverage} />
+        </>
+      )}
 
       {searchFailed ? <ErrorResults onRetry={onRetry} /> : (
         <ResultDeck
