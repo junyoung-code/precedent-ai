@@ -4,6 +4,21 @@ import { redactSensitiveText } from "./lib/privacy-redaction.js";
 import { abandonIntake, answerIntake, cancelIntake, completeIntake, createIntake } from "./lib/intake-api.js";
 import { analyseCase, fetchWebCases } from "./lib/analysis-api.js";
 import { WEB_SOURCE_TYPE_LABEL } from "./lib/web-case-vocab.js";
+import {
+  GUIDE_ANALYSIS,
+  GUIDE_ANSWER_LENGTH,
+  GUIDE_AVAILABLE_COUNT,
+  GUIDE_ELEMENTS,
+  GUIDE_EXAMPLES,
+  GUIDE_INTAKE_QUESTIONS,
+  GUIDE_STATUTE,
+  GUIDE_STEPS,
+  GUIDE_TYPING_SPEED,
+  GUIDE_WEB_CASES,
+  guideResults,
+  guideStepDuration,
+  sliceGuideAnswers,
+} from "./lib/guide-script.js";
 
 const FACT_LABELS = {
   medium: {
@@ -34,13 +49,20 @@ const FACT_LABELS = {
   repetition: { once: "한 차례", repeated: "반복", unknown: "횟수 미확인" },
 };
 
-function SideNavigation({ view, onNewCase }) {
-  const items = [
-    { icon: "⌂", label: "사례 분석", active: true },
-    { icon: "◎", label: "판례 범위" },
-    { icon: "↻", label: "검증 기록" },
-    { icon: "?", label: "이용 안내" },
-  ];
+const NAV_ITEMS = [
+  { id: "home", icon: "⌂", label: "사례 분석" },
+  { id: "guide", icon: "?", label: "이용 안내" },
+  { id: "scope", icon: "◎", label: "판례 범위" },
+  { id: "verification", icon: "✓", label: "검증 기록" },
+];
+
+/**
+ * The menu keeps its unbuilt entries so the shape of the product stays visible,
+ * but only the screens that exist take a click. A menu item that navigates to
+ * nothing is worse than one that says it is not ready yet.
+ */
+function SideNavigation({ view, onNewCase, onOpenGuide }) {
+  const openers = { home: onNewCase, guide: onOpenGuide };
 
   return (
     <aside className="side-navigation" aria-label="주요 메뉴">
@@ -48,24 +70,30 @@ function SideNavigation({ view, onNewCase }) {
         <span className="brand-spark">✦</span>
       </button>
       <nav className="nav-stack">
-        {items.map((item) => (
-          <button
-            className={`nav-item ${item.active ? "is-active" : ""}`}
-            key={item.label}
-            type="button"
-            onClick={item.active ? onNewCase : undefined}
-            aria-current={item.active && view === "home" ? "page" : undefined}
-            title={item.label}
-          >
-            <span aria-hidden="true">{item.icon}</span>
-            <span className="nav-label">{item.label}</span>
-          </button>
-        ))}
+        {NAV_ITEMS.map((item) => {
+          const open = openers[item.id];
+          const current = item.id === "home" ? view === "home" || view === "results" : view === item.id;
+          const label = open ? item.label : `${item.label} · 준비 중`;
+          return (
+            <button
+              className={`nav-item ${current ? "is-active" : ""} ${open ? "is-available" : ""}`}
+              key={item.id}
+              type="button"
+              onClick={open}
+              aria-current={current ? "page" : undefined}
+              aria-disabled={open ? undefined : true}
+              title={label}
+            >
+              <span aria-hidden="true">{item.icon}</span>
+              <span className="nav-label">{label}</span>
+            </button>
+          );
+        })}
       </nav>
       <div className="nav-bottom">
-        <div className="privacy-dot" title="가려진 입력만 최대 1시간 임시 저장">
+        <div className="privacy-dot" title="개인정보 처리 · 준비 중">
           <span aria-hidden="true">◉</span>
-          <span className="nav-label">1시간 내 삭제</span>
+          <span className="nav-label">개인정보 처리 · 준비 중</span>
         </div>
       </div>
     </aside>
@@ -159,6 +187,8 @@ function CaseComposer({
   onStartIntake,
   onSubmitAnswers,
   onCancelIntake,
+  answers: controlledAnswers,
+  onAnswersChange,
 }) {
   const fileInputRef = useRef(null);
   const captureNoticeRef = useRef(null);
@@ -166,7 +196,9 @@ function CaseComposer({
   const [fileError, setFileError] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [transcript, setTranscript] = useState("");
-  const [answers, setAnswers] = useState({});
+  const [ownAnswers, setOwnAnswers] = useState({});
+  const answers = controlledAnswers ?? ownAnswers;
+  const setAnswers = onAnswersChange ?? setOwnAnswers;
   const [dragging, setDragging] = useState(false);
   const [captureNotice, setCaptureNotice] = useState(false);
   const [captureConfirmed, setCaptureConfirmed] = useState(false);
@@ -818,8 +850,10 @@ const RESULT_SCREENS = [
  * one animates, so the deck is as tall as what is on screen rather than as
  * tall as its longest screen.
  */
-function ResultDeck({ precedents, resultCount, analysisState, webCasesState, onNewCase }) {
-  const [index, setIndex] = useState(0);
+function ResultDeck({ precedents, resultCount, analysisState, webCasesState, onNewCase, index: controlledIndex, onIndexChange }) {
+  const [ownIndex, setOwnIndex] = useState(0);
+  const index = controlledIndex ?? ownIndex;
+  const setIndex = onIndexChange ?? setOwnIndex;
   const [direction, setDirection] = useState("forward");
   const deckRef = useRef(null);
   const state = analysisState || { loading: false, statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_DISABLED" };
@@ -1021,6 +1055,8 @@ export function App() {
   // Kept so a retry can rebuild an equivalent session after the server deleted
   // the failed one.
   const answersRef = useRef({});
+  // Where the reader was when they opened the guide.
+  const guideReturnRef = useRef("home");
 
   function trackIntake(next) {
     activeSessionRef.current = next.sessionId;
@@ -1055,6 +1091,16 @@ export function App() {
       abandon();
     };
   }, []);
+
+  function openGuide() {
+    if (view !== "guide") guideReturnRef.current = view;
+    setView("guide");
+  }
+
+  /** Back to the case, untouched. Starting a new one is a separate button. */
+  function closeGuide() {
+    setView(guideReturnRef.current || "home");
+  }
 
   function goHome() {
     setView("home");
@@ -1209,8 +1255,8 @@ export function App() {
 
   return (
     <div className="page-background">
-      <div className={`app-shell ${view === "home" ? "is-home" : "has-results"}`}>
-        <SideNavigation view={view} onNewCase={startNewCase} />
+      <div className={`app-shell ${view === "home" ? "is-home" : "has-results"}${view === "guide" ? " is-guide" : ""}`}>
+        <SideNavigation view={view} onNewCase={startNewCase} onOpenGuide={openGuide} />
         <div className="app-content">
           <TopBar onNewCase={startNewCase} availableCount={coverage.availableCount} />
           <main className="main-content">
@@ -1245,9 +1291,419 @@ export function App() {
                 webCasesState={webCasesState}
               />
             )}
+            {view === "guide" && <GuideView onClose={closeGuide} />}
           </main>
         </div>
       </div>
     </div>
+  );
+}
+
+
+
+/* ------------------------------------------------------------------------- *
+ * 이용 안내 — a tour that plays the real screens
+ *
+ * Everything below renders the same CaseComposer and ResultDeck the product
+ * uses, driven by the script in lib/guide-script.js. Nothing here reaches the
+ * network: the example result is the real ranking function run over the curated
+ * precedents, and the statute reading is the real rules run over the example's
+ * facts. So the tour cannot show a case that does not exist, and it cannot
+ * quietly drift away from the screens it is describing.
+ *
+ * The stage is inert. A reader who starts typing their own case into a picture
+ * of the composer would be writing into nothing, so the picture refuses the
+ * keyboard and stays out of the tab order. The real composer is one click away.
+ *
+ * Each step pushes in on the part it is explaining and pulls back out on the
+ * way to the next one. A score ring is forty pixels tall inside a screen a
+ * thousand pixels wide; ringing it without magnifying it points at something
+ * the reader still cannot read.
+ * ------------------------------------------------------------------------- */
+
+const GUIDE_EMPTY_INTAKE = { sessionId: null, questions: [] };
+const GUIDE_EMPTY_ANSWERS = {};
+
+// The stage always lays out at this width so the reader sees the desktop screen
+// rather than its narrow-window rearrangement. Fixed, so measuring the content
+// never fights the transform that measurement just set.
+const GUIDE_STAGE_WIDTH = 1100;
+// The halo drawn around what is lit.
+const GUIDE_LIT_PADDING = 10;
+// Room left around the subject when pushing in on it.
+const GUIDE_FOCUS_PADDING = 44;
+// However small the subject, this much of the screen around it stays visible —
+// magnifying a ring until it fills the frame loses the screen it belongs to.
+const GUIDE_CONTEXT_WIDTH = 660;
+const GUIDE_CONTEXT_HEIGHT = 420;
+// Past this the mock is just soft-edged pixels.
+const GUIDE_MAX_SCALE = 1.3;
+
+const GUIDE_ANALYSIS_STATE = {
+  loading: false,
+  statute: GUIDE_STATUTE,
+  elements: GUIDE_ELEMENTS,
+  analysis: GUIDE_ANALYSIS,
+  unavailable: null,
+};
+
+// No date: a fixed one would be quietly wrong a week later, and the panel drops
+// the line rather than printing a stale "기준" date.
+const GUIDE_WEB_STATE = { loading: false, webCases: GUIDE_WEB_CASES, fetchedAt: null, unavailable: null };
+
+function guideNoop() {}
+
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduced(query.matches);
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  return reduced;
+}
+
+/**
+ * Counts characters out one at a time. A reader who asked for less motion gets
+ * the finished line instead of watching it appear.
+ */
+function useTypedLength(total, active, reduced, resetKey) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!active) { setCount(0); return undefined; }
+    if (reduced) { setCount(total); return undefined; }
+    setCount(0);
+    const timer = setInterval(() => setCount((typed) => (typed >= total ? typed : typed + 1)), GUIDE_TYPING_SPEED);
+    return () => clearInterval(timer);
+  }, [total, active, reduced, resetKey]);
+  return count;
+}
+
+/**
+ * Where a node sits in the layout, ignoring any transform above it.
+ *
+ * getBoundingClientRect would report where the node is being painted, which
+ * during the push-in animation is a moving target. offsetLeft and offsetTop are
+ * layout values a transform does not touch, so the arithmetic below stays true
+ * while the stage is still gliding to its new position.
+ */
+function guideLayoutOffset(node) {
+  let x = 0;
+  let y = 0;
+  for (let element = node; element; element = element.offsetParent) {
+    x += element.offsetLeft;
+    y += element.offsetTop;
+  }
+  return { x, y };
+}
+
+/**
+ * Works out where to put the stage and what to cut out of the veil.
+ *
+ * Both come from one calculation on purpose. The transform and the hole are
+ * given the same transition, and because the hole's position is derived rather
+ * than measured, the outline never lags a frame behind the screen it is drawn
+ * around.
+ */
+function guideFraming({ viewport, content, selectors }) {
+  const width = viewport.clientWidth;
+  const height = viewport.clientHeight;
+  const contentWidth = content.offsetWidth;
+  const contentHeight = content.offsetHeight;
+  if (!width || !height || !contentWidth || !contentHeight) return null;
+
+  const fit = Math.min(1, width / contentWidth, height / contentHeight);
+  const whole = {
+    scale: fit,
+    x: (width - fit * contentWidth) / 2,
+    y: Math.max(0, (height - fit * contentHeight) / 2),
+    lit: null,
+    frame: { width, height },
+  };
+  if (!selectors) return whole;
+
+  // The deck keeps its closed screens in the document so printing can reveal
+  // them, and .analysis-card exists on two of them. A hidden one measures zero,
+  // so the first match with a size is the one actually on screen.
+  const base = guideLayoutOffset(content);
+  let top = Infinity;
+  let left = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  let found = false;
+
+  for (const selector of selectors) {
+    const node = [...viewport.querySelectorAll(selector)].find((item) => item.offsetWidth > 0);
+    if (!node) continue;
+    found = true;
+    const spot = guideLayoutOffset(node);
+    top = Math.min(top, spot.y - base.y);
+    left = Math.min(left, spot.x - base.x);
+    right = Math.max(right, spot.x - base.x + node.offsetWidth);
+    bottom = Math.max(bottom, spot.y - base.y + node.offsetHeight);
+  }
+  if (!found) return whole;
+
+  const box = { x: left, y: top, width: right - left, height: bottom - top };
+  const wantWidth = Math.max(box.width + GUIDE_FOCUS_PADDING * 2, GUIDE_CONTEXT_WIDTH);
+  const wantHeight = Math.max(box.height + GUIDE_FOCUS_PADDING * 2, GUIDE_CONTEXT_HEIGHT);
+  // Never further out than the whole screen, never closer in than is readable.
+  const scale = Math.max(fit, Math.min(GUIDE_MAX_SCALE, Math.min(width / wantWidth, height / wantHeight)));
+
+  // Centre the subject, then pull back so no empty space beyond the mock's own
+  // edges is dragged into the frame.
+  const scaledWidth = scale * contentWidth;
+  const scaledHeight = scale * contentHeight;
+  let x = width / 2 - scale * (box.x + box.width / 2);
+  let y = height / 2 - scale * (box.y + box.height / 2);
+  x = scaledWidth <= width ? (width - scaledWidth) / 2 : Math.min(0, Math.max(width - scaledWidth, x));
+  y = scaledHeight <= height ? (height - scaledHeight) / 2 : Math.min(0, Math.max(height - scaledHeight, y));
+
+  // The deck arrows are drawn outside the mock's own box, so holding the frame
+  // to those edges left the arrow this step is about off the side of the screen.
+  // Keeping the subject in view wins over not showing what is past the edge.
+  const margin = GUIDE_LIT_PADDING + 6;
+  x = Math.min(x, width - margin - scale * (box.x + box.width));
+  x = Math.max(x, margin - scale * box.x);
+  y = Math.min(y, height - margin - scale * (box.y + box.height));
+  y = Math.max(y, margin - scale * box.y);
+
+  return {
+    scale,
+    x,
+    y,
+    lit: {
+      top: y + scale * box.y - GUIDE_LIT_PADDING,
+      left: x + scale * box.x - GUIDE_LIT_PADDING,
+      width: scale * box.width + GUIDE_LIT_PADDING * 2,
+      height: scale * box.height + GUIDE_LIT_PADDING * 2,
+    },
+    frame: { width, height },
+  };
+}
+
+const GUIDE_RESTING_FRAME = { scale: 1, x: 0, y: 0, lit: null, frame: { width: 0, height: 0 } };
+
+function sameFraming(current, next) {
+  if (!current || !next) return current === next;
+  if (Math.abs(current.scale - next.scale) > 0.002) return false;
+  if (Math.abs(current.x - next.x) > 0.5 || Math.abs(current.y - next.y) > 0.5) return false;
+  if (!current.lit || !next.lit) return current.lit === next.lit;
+  return ["top", "left", "width", "height"].every((side) => Math.abs(current.lit[side] - next.lit[side]) < 0.5);
+}
+
+function useGuideFraming(viewportRef, contentRef, target, revision) {
+  const [framing, setFraming] = useState(GUIDE_RESTING_FRAME);
+  const selectors = target === null ? null : (Array.isArray(target) ? target : [target]);
+  const key = selectors ? selectors.join("|") : "";
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+    if (!viewport || !content) return undefined;
+
+    function measure() {
+      const next = guideFraming({ viewport, content, selectors: key ? key.split("|") : null });
+      if (next) setFraming((current) => (sameFraming(current, next) ? current : next));
+    }
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    observer.observe(content);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [viewportRef, contentRef, key, revision]);
+
+  return framing;
+}
+
+/**
+ * Four panels around the hole rather than one panel with a hole cut in it.
+ *
+ * A single masked panel needs mask-composite, which is still spelled two
+ * different ways across browsers; four rectangles need nothing but position.
+ * The rounded outline on top is what makes it read as a spotlight.
+ */
+function GuideSpotlight({ lit, frame }) {
+  if (!lit) return null;
+  const clamp = (value, limit) => Math.max(0, Math.min(limit, value));
+  const top = clamp(lit.top, frame.height);
+  const bottom = clamp(lit.top + lit.height, frame.height);
+  const left = clamp(lit.left, frame.width);
+  const right = clamp(lit.left + lit.width, frame.width);
+
+  return (
+    <div className="guide-spotlight" aria-hidden="true">
+      <div className="guide-veil" style={{ top: 0, left: 0, right: 0, height: `${top}px` }} />
+      <div className="guide-veil" style={{ top: `${bottom}px`, left: 0, right: 0, bottom: 0 }} />
+      <div className="guide-veil" style={{ top: `${top}px`, left: 0, width: `${left}px`, height: `${bottom - top}px` }} />
+      <div className="guide-veil" style={{ top: `${top}px`, left: `${right}px`, right: 0, height: `${bottom - top}px` }} />
+      <div
+        className="guide-lit"
+        style={{ top: `${top}px`, left: `${left}px`, width: `${right - left}px`, height: `${bottom - top}px` }}
+      />
+    </div>
+  );
+}
+
+/** The real screens, standing in for themselves. */
+function GuideScene({ step, description, answers }) {
+  if (step.scene === "results") {
+    if (step.results === "empty") {
+      return (
+        <div className="results-list">
+          <EmptyResults onRevise={guideNoop} availableCount={GUIDE_AVAILABLE_COUNT} />
+        </div>
+      );
+    }
+    const [top] = guideResults();
+    if (!top) return null;
+    return (
+      <ResultDeck
+        precedents={<div className="results-list"><PrecedentCard result={top} rank={1} /></div>}
+        resultCount={1}
+        analysisState={GUIDE_ANALYSIS_STATE}
+        webCasesState={GUIDE_WEB_STATE}
+        onNewCase={guideNoop}
+        index={step.deck}
+        onIndexChange={guideNoop}
+      />
+    );
+  }
+
+  return (
+    <CaseComposer
+      role={step.role || ""}
+      onRoleChange={guideNoop}
+      description={description}
+      onDescriptionChange={guideNoop}
+      onSubmit={guideNoop}
+      analyzing={step.searching === true}
+      allowExternalAi={step.consent === true}
+      onExternalAiChange={guideNoop}
+      intake={step.questions ? { sessionId: "guide", questions: GUIDE_INTAKE_QUESTIONS } : GUIDE_EMPTY_INTAKE}
+      onStartIntake={guideNoop}
+      onSubmitAnswers={guideNoop}
+      onCancelIntake={guideNoop}
+      answers={answers}
+      onAnswersChange={guideNoop}
+    />
+  );
+}
+
+function GuideView({ onClose }) {
+  const reduced = usePrefersReducedMotion();
+  const [index, setIndex] = useState(0);
+  // Plays the moment the tab opens. Nothing pauses it on its own — passing the
+  // pointer over the screen used to stop it, which made a scroll look like a bug.
+  const [playing, setPlaying] = useState(!reduced);
+  const viewportRef = useRef(null);
+  const contentRef = useRef(null);
+  const step = GUIDE_STEPS[index];
+
+  const example = GUIDE_EXAMPLES[step.example] || GUIDE_EXAMPLES.thorough;
+  const typingDescription = step.description === "typing";
+  const typedDescription = useTypedLength(example.description.length, typingDescription, reduced, step.id);
+  const typingAnswers = step.answers === "typing";
+  const typedAnswers = useTypedLength(GUIDE_ANSWER_LENGTH, typingAnswers, reduced, step.id);
+
+  const description = step.description === "none"
+    ? ""
+    : typingDescription ? example.description.slice(0, typedDescription) : example.description;
+  const answers = typingAnswers ? sliceGuideAnswers(typedAnswers) : GUIDE_EMPTY_ANSWERS;
+
+  const framing = useGuideFraming(
+    viewportRef,
+    contentRef,
+    step.target,
+    `${step.id}:${typedDescription}:${typedAnswers}`,
+  );
+
+  // Asking for less motion turns the tour into something read at the reader's
+  // own pace rather than something that keeps moving underneath them.
+  useEffect(() => {
+    if (reduced) setPlaying(false);
+  }, [reduced]);
+
+  useEffect(() => {
+    if (!playing) return undefined;
+    if (index >= GUIDE_STEPS.length - 1) { setPlaying(false); return undefined; }
+    const timer = setTimeout(() => setIndex(index + 1), guideStepDuration(step));
+    return () => clearTimeout(timer);
+  }, [playing, index, step]);
+
+  function go(next) {
+    if (next < 0 || next >= GUIDE_STEPS.length) return;
+    setPlaying(false);
+    setIndex(next);
+  }
+
+  function restart() {
+    setIndex(0);
+    setPlaying(!reduced);
+  }
+
+  return (
+    <section className="guide-view" aria-label="이용 안내">
+      <header className="guide-header">
+        <button className="back-button" type="button" onClick={onClose}>
+          <span aria-hidden="true">←</span> 돌아가기
+        </button>
+        <p className="guide-frame-label">
+          <span aria-hidden="true">✦</span> 예시 화면 · 실제 검색 결과가 아닙니다
+        </p>
+      </header>
+
+      <div className="guide-viewport" ref={viewportRef}>
+        <div
+          className="guide-stage"
+          style={{
+            width: `${GUIDE_STAGE_WIDTH}px`,
+            transform: `translate3d(${framing.x}px, ${framing.y}px, 0) scale(${framing.scale})`,
+          }}
+        >
+          <div className="guide-stage-content" ref={contentRef} inert={true}>
+            <GuideScene step={step} description={description} answers={answers} />
+          </div>
+        </div>
+        <GuideSpotlight lit={framing.lit} frame={framing.frame} />
+      </div>
+
+      <div className="guide-caption">
+        <div className="guide-progress" aria-hidden="true">
+          {GUIDE_STEPS.map((item, position) => (
+            <span key={item.id} className={`guide-dot ${position === index ? "is-active" : ""} ${position < index ? "is-done" : ""}`} />
+          ))}
+          <span className="guide-count">{index + 1} / {GUIDE_STEPS.length}</span>
+        </div>
+        <h2>{step.title}</h2>
+        <p>{step.body}</p>
+      </div>
+
+      <div className="guide-controls">
+        <button type="button" onClick={restart}>
+          <span aria-hidden="true">↻</span> 처음부터
+        </button>
+        <button type="button" onClick={() => go(index - 1)} disabled={index === 0}>
+          <span aria-hidden="true">←</span> 이전
+        </button>
+        <button
+          type="button"
+          className="guide-play"
+          onClick={() => setPlaying(!playing)}
+          disabled={index >= GUIDE_STEPS.length - 1 && !playing}
+        >
+          {playing ? "⏸ 일시정지" : "▶ 재생"}
+        </button>
+        <button type="button" className="guide-next" onClick={() => go(index + 1)} disabled={index >= GUIDE_STEPS.length - 1}>
+          다음 <span aria-hidden="true">→</span>
+        </button>
+      </div>
+    </section>
   );
 }

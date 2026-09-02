@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { GUIDE_STEPS } from "../src/lib/guide-script.js";
+
 const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
 
 test("shows compact pre-use and generated-result AI disclosures", () => {
@@ -272,4 +274,178 @@ test("names the two ways back for what they each do", () => {
   assert.match(appSource, /onRevise=\{goHome\}/);
   assert.match(appSource, /onNewCase=\{startNewCase\}/);
   assert.match(appSource, /<EmptyResults onRevise=\{onRevise\}/);
+});
+
+test("only the menu entries that lead somewhere take a click", () => {
+  // The unbuilt screens keep their place so the shape of the product stays
+  // visible, but a menu item that navigates to nothing is worse than one that
+  // says it is not ready.
+  assert.match(appSource, /const openers = \{ home: onNewCase, guide: onOpenGuide \};/);
+  assert.match(appSource, /onClick=\{open\}/);
+  assert.match(appSource, /aria-disabled=\{open \? undefined : true\}/);
+  assert.match(appSource, /준비 중/);
+  // Current page is marked, and it is not the same thing as being clickable.
+  assert.match(appSource, /aria-current=\{current \? "page" : undefined\}/);
+});
+
+test("the guide plays the real screens rather than a drawing of them", () => {
+  const guide = appSource.slice(appSource.indexOf("function GuideScene"));
+  // The same components the product renders, so the tour cannot drift away
+  // from the screens it is describing.
+  assert.match(guide, /<CaseComposer/);
+  assert.match(guide, /<PrecedentCard result=\{top\} rank=\{1\} \/>/);
+  assert.match(guide, /<EmptyResults onRevise=\{guideNoop\} availableCount=\{GUIDE_AVAILABLE_COUNT\} \/>/);
+  // Every handler is a no-op: the tour must not be able to start a search.
+  assert.doesNotMatch(guide, /fetch\(/);
+  assert.doesNotMatch(guide, /createIntake|completeIntake|analyseCase/);
+});
+
+test("the guide stage refuses the keyboard", () => {
+  // A reader typing their own case into a picture of the composer would be
+  // writing into nothing, so the picture stays out of reach and out of the
+  // tab order. The real composer is one click away.
+  assert.match(appSource, /<div className="guide-stage-content" ref=\{contentRef\} inert=\{true\}>/);
+});
+
+test("the guide says it is an example wherever it is screenshotted", () => {
+  // A card on that stage quotes a real case number. Nothing there may pass for
+  // a search someone actually ran.
+  assert.match(appSource, /예시 화면 · 실제 검색 결과가 아닙니다/);
+  // The label sits in the header, outside the viewport the veil dims, so it
+  // stays legible on every step and in any screenshot of one.
+  assert.ok(appSource.indexOf("guide-frame-label") < appSource.indexOf('className="guide-viewport"'));
+});
+
+test("the spotlight explains rather than merely dims", () => {
+  // Four panels around the hole, because mask-composite is still spelled two
+  // different ways across browsers.
+  assert.equal((appSource.match(/className="guide-veil"/g) || []).length, 4);
+  assert.match(appSource, /className="guide-lit"/);
+  // The veil is decoration; the explanation must never sit behind the blur.
+  assert.match(appSource, /<div className="guide-spotlight" aria-hidden="true">/);
+  // The words sit in their own row under the stage rather than floating over
+  // it: at half scale a bubble on the mock is larger than what it explains.
+  assert.ok(appSource.indexOf("<GuideSpotlight lit={framing.lit}") < appSource.indexOf('className="guide-caption"'));
+  assert.equal(appSource.includes("GuideCallout"), false);
+  // A step that lights nothing, and a selector that stops matching, both fall
+  // back to the whole screen rather than covering it with no hole in it.
+  assert.match(appSource, /if \(!selectors\) return whole;/);
+  assert.match(appSource, /if \(!found\) return whole;/);
+  assert.match(appSource, /if \(!lit\) return null;/);
+  // The hole never spills outside the frame, or a veil panel gets a negative size.
+  assert.match(appSource, /const clamp = \(value, limit\) => Math\.max\(0, Math\.min\(limit, value\)\);/);
+});
+
+test("the spotlight follows the screen as it grows", () => {
+  // The composer gets taller when the three follow-up questions arrive; a
+  // rectangle measured once would be lighting the wrong thing by then.
+  assert.match(appSource, /new ResizeObserver\(measure\)/);
+  assert.match(appSource, /observer\.observe\(viewport\)/);
+  assert.match(appSource, /window\.addEventListener\("resize", measure\)/);
+  assert.match(appSource, /observer\.disconnect\(\)/);
+});
+
+test("the whole tour fits one screen instead of being scrolled through", () => {
+  // The mock is laid out at desktop width and moved into whatever room is left,
+  // so a reader sees the real screen rather than its narrow rearrangement.
+  assert.match(appSource, /const GUIDE_STAGE_WIDTH = \d+;/);
+  assert.match(appSource, /function guideFraming/);
+  assert.match(appSource, /const fit = Math\.min\(1, width \/ contentWidth, height \/ contentHeight\)/);
+  // The veil and the outline stay outside the transform, or they thin out with it.
+  assert.ok(appSource.indexOf('className="guide-stage-content"') < appSource.indexOf("<GuideSpotlight"));
+});
+
+test("the tour pushes in on what it is explaining", () => {
+  // A score ring is forty pixels tall inside a thousand-pixel screen. Ringing
+  // it without magnifying it points at something still too small to read.
+  assert.match(appSource, /const GUIDE_MAX_SCALE = [\d.]+;/);
+  assert.match(appSource, /const GUIDE_CONTEXT_WIDTH = \d+;/);
+  assert.match(appSource, /const GUIDE_CONTEXT_HEIGHT = \d+;/);
+  // Never further out than the whole screen, never closer in than is readable.
+  assert.match(appSource, /Math\.max\(fit, Math\.min\(GUIDE_MAX_SCALE,/);
+  assert.match(appSource, /transform: `translate3d\(\$\{framing\.x\}px, \$\{framing\.y\}px, 0\) scale\(\$\{framing\.scale\}\)`/);
+
+  // offsetLeft/offsetTop are layout values a transform does not touch, so the
+  // arithmetic stays true while the stage is still gliding into place —
+  // getBoundingClientRect would be reading a moving target mid-animation.
+  assert.match(appSource, /function guideLayoutOffset/);
+  assert.match(appSource, /element\.offsetLeft/);
+  assert.match(appSource, /element\.offsetTop/);
+  assert.doesNotMatch(appSource.slice(appSource.indexOf("function guideFraming")), /getBoundingClientRect/);
+
+  // One calculation places the stage and cuts the hole, so the outline cannot
+  // lag a frame behind the screen it is drawn around.
+  assert.match(appSource, /top: y \+ scale \* box\.y - GUIDE_LIT_PADDING/);
+  assert.match(appSource, /left: x \+ scale \* box\.x - GUIDE_LIT_PADDING/);
+});
+
+test("the tour plays on arrival and nothing but the reader stops it", () => {
+  // Passing the pointer over the screen used to pause it, which made an
+  // ordinary scroll look like the tour had broken.
+  assert.match(appSource, /const \[playing, setPlaying\] = useState\(!reduced\);/);
+  assert.equal(appSource.includes("onMouseEnter"), false);
+});
+
+test("the tour walks all three result screens, not just the precedents", () => {
+  // The deck screen is chosen from outside for the tour; the real result page
+  // keeps its own, so nothing about it changes.
+  assert.match(appSource, /const index = controlledIndex \?\? ownIndex;/);
+  assert.match(appSource, /const setIndex = onIndexChange \?\? setOwnIndex;/);
+  assert.match(appSource, /index=\{step\.deck\}/);
+  // The statute is quoted, the four verdicts come from the rules, and the
+  // generated half is handed over as it was written.
+  assert.match(appSource, /statute: GUIDE_STATUTE/);
+  assert.match(appSource, /elements: GUIDE_ELEMENTS/);
+  assert.match(appSource, /analysis: GUIDE_ANALYSIS/);
+  // A fixed date would be quietly wrong a week later; the panel drops the line.
+  assert.match(appSource, /webCases: GUIDE_WEB_CASES, fetchedAt: null/);
+});
+
+test("the guide is read at the reader's own pace when motion is unwelcome", () => {
+  assert.match(appSource, /function usePrefersReducedMotion/);
+  // Typed lines arrive finished instead of one character at a time.
+  assert.match(appSource, /if \(reduced\) \{ setCount\(total\); return undefined; \}/);
+  // And the tour does not move on by itself.
+  assert.match(appSource, /useState\(!reduced\)/);
+  assert.match(appSource, /if \(reduced\) setPlaying\(false\)/);
+  // Every timer is cleared, or leaving the guide leaks one per step.
+  assert.match(appSource, /return \(\) => clearInterval\(timer\)/);
+  assert.match(appSource, /return \(\) => clearTimeout\(timer\)/);
+});
+
+test("leaving the guide does not throw the case away", () => {
+  // The case screens stay mounted behind it, so a half-written case and its
+  // capture are still there on the way back. Starting a new one is a separate,
+  // clearly named button.
+  assert.match(appSource, /guideReturnRef\.current = view;/);
+  assert.match(appSource, /setView\(guideReturnRef\.current \|\| "home"\);/);
+  assert.match(appSource, /\{view === "guide" && <GuideView onClose=\{closeGuide\} \/>\}/);
+  assert.match(appSource, /view === "guide" \? " is-guide" : ""/);
+});
+
+test("every part the tour lights up still exists on the screen", () => {
+  // The spotlight fails quietly: a selector that stops matching drops the veil,
+  // and the step then explains something the reader sees nothing highlighted on.
+  // So every class a step points at has to be one the screen still renders.
+  const rendered = new Set(
+    [...appSource.matchAll(/className=(?:"([^"]*)"|{`([^`]*)`})/g)]
+      .flatMap((match) => (match[1] || match[2] || "").split(/[^a-zA-Z0-9_-]+/))
+      .filter(Boolean),
+  );
+
+  for (const step of GUIDE_STEPS) {
+    // null lights nothing and shows the screen whole, which is how the tour opens.
+    if (step.target === null) continue;
+    const selectors = Array.isArray(step.target) ? step.target : [step.target];
+    for (const selector of selectors) {
+      // Split on whitespace for descendants, then on the dot for compounds, so
+      // ".deck-arrow.is-next" is checked as both of the classes it needs. Bare
+      // element names like "textarea" are not classes and are skipped.
+      for (const part of selector.split(/\s+/).filter((token) => token.startsWith("."))) {
+        for (const name of part.split(".").filter(Boolean)) {
+          assert.ok(rendered.has(name), `step "${step.id}" lights up .${name}, which nothing renders any more`);
+        }
+      }
+    }
+  }
 });

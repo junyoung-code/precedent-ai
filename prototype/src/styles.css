@@ -701,3 +701,157 @@ button { color: inherit; }
   padding: 7px 12px; border: 1px solid #d8cfc4; border-radius: 999px; background: #fdf6ee;
   color: #6b4327; font-size: 11.5px; font-weight: 700; box-shadow: 0 2px 10px rgba(35, 38, 58, .1); }
 @media print { .offline-badge { display: none !important; } }
+
+/* --- 이용 안내 ---------------------------------------------------------- */
+
+/* A menu entry that can be opened reads as a control; the unbuilt ones keep
+   their place but stay flat, so the difference is visible before the click. */
+.nav-item.is-available { cursor: pointer; color: #4a4d5c; }
+.nav-item.is-available:hover { background: var(--violet-soft); color: var(--violet); }
+.nav-item[aria-disabled="true"] { opacity: 0.55; }
+
+/* The case screens stay mounted behind the guide so a half-written case, its
+   capture and its transcript survive the trip. */
+.app-shell.is-guide .home-view,
+.app-shell.is-guide .results-view,
+.app-shell.is-guide .offline-badge { display: none; }
+
+/* The tour has to be readable without scrolling, so the shell stops growing and
+   the guide takes exactly the room that is left. */
+.app-shell.is-guide { height: calc(100vh - 48px); overflow: hidden; }
+.app-shell.is-guide .side-navigation { height: 100%; min-height: 0; }
+.app-shell.is-guide .app-content { height: 100%; overflow: hidden; }
+/* The tour takes the product bar's row too: it is the thing being read here,
+   and the bar repeats a name the sidebar is already showing. */
+.app-shell.is-guide .top-bar { display: none; }
+.app-shell.is-guide .main-content { height: 100%; min-height: 0; overflow: hidden; }
+
+.guide-view {
+  height: 100%;
+  padding: 14px 26px 18px;
+  display: grid;
+  /* screen · stage · words · buttons — only the stage flexes */
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 12px;
+}
+
+.guide-header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.guide-header .back-button { flex: none; }
+
+/* Always on screen: the stage quotes a real case number, and a screenshot of it
+   must not be able to pass for a search someone actually ran. */
+.guide-frame-label {
+  margin: 0;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.guide-viewport {
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fffdfa;
+}
+
+/* Laid out at desktop width so the reader sees the real screen rather than its
+   narrow-window rearrangement, then moved and magnified per step. The width is
+   fixed in the markup, which is what stops measuring from chasing the transform
+   that measurement just set.
+
+   Origin at 0 0 because the position is computed rather than centred by the
+   browser: the same numbers place the stage and cut the hole, so the outline
+   cannot drift a frame behind the screen it is drawn around. */
+.guide-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  transition: transform 620ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+.guide-stage-content { padding: 18px 24px 26px; }
+.guide-stage-content .composer-stack,
+.guide-stage-content .results-list,
+.guide-stage-content .result-deck { width: 100%; }
+
+/* Outside the scale, so neither the outline nor the dimming thins out as the
+   mock shrinks. */
+.guide-spotlight { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+
+/* Four panels around the hole rather than one panel with a hole cut in it —
+   mask-composite is still spelled two ways across browsers, position is not. */
+/* Same duration and curve as the stage, so the dimming travels with the screen
+   it is dimming instead of catching up to it. */
+.guide-veil {
+  position: absolute;
+  background: rgba(33, 27, 24, 0.34);
+  transition: all 620ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@supports (backdrop-filter: blur(3px)) or (-webkit-backdrop-filter: blur(3px)) {
+  .guide-veil {
+    background: rgba(33, 27, 24, 0.2);
+    -webkit-backdrop-filter: blur(3px) brightness(0.86);
+    backdrop-filter: blur(3px) brightness(0.86);
+  }
+}
+
+.guide-lit {
+  position: absolute;
+  border-radius: 12px;
+  border: 2px solid var(--violet);
+  box-shadow: 0 0 0 3px rgba(139, 90, 60, 0.16), 0 14px 34px rgba(61, 43, 33, 0.16);
+  transition: all 620ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* The words live here rather than floating over the mock: at half scale a
+   bubble on the stage is larger than the screen it is explaining. The row is
+   given a floor so a longer explanation never resizes the stage above it. */
+.guide-caption { display: grid; gap: 5px; align-content: start; min-height: 104px; }
+.guide-caption h2 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+.guide-caption p { margin: 0; max-width: 940px; color: var(--muted); font-size: 13.5px; line-height: 1.65; }
+
+.guide-progress { display: flex; align-items: center; gap: 5px; }
+.guide-dot { width: 6px; height: 6px; border-radius: 50%; background: #e3dbd5; transition: all 200ms ease; }
+.guide-dot.is-done { background: var(--success); }
+.guide-dot.is-active { width: 18px; border-radius: 3px; background: var(--violet); }
+.guide-count { margin-left: 9px; color: var(--muted); font-size: 11.5px; }
+
+.guide-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.guide-controls button {
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fffdfa;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink);
+}
+.guide-controls button:hover:not(:disabled) { border-color: var(--violet); color: var(--violet); }
+.guide-controls button:disabled { opacity: 0.42; cursor: default; }
+.guide-controls .guide-play { min-width: 104px; }
+/* The tour is walked with this one, so it is the button that looks like it. */
+.guide-controls .guide-next { margin-left: auto; background: var(--violet); border-color: var(--violet); color: #fff; }
+.guide-controls .guide-next:hover:not(:disabled) { background: var(--violet-dark); color: #fff; }
+
+@media (max-width: 900px) {
+  .guide-view { padding: 12px 14px 16px; }
+  .guide-caption { min-height: 128px; }
+  .guide-controls .guide-next { margin-left: 0; }
+}
+
+/* Read at the reader's own pace instead of moving underneath them: the script
+   fills in complete, autoplay starts off, and nothing slides. */
+@media (prefers-reduced-motion: reduce) {
+  .guide-stage, .guide-veil, .guide-lit, .guide-dot { transition: none; }
+}
+
+/* The stage is a picture of a screen, not part of this page's content. */
+@media print {
+  .guide-view { display: none !important; }
+}
