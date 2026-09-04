@@ -156,3 +156,35 @@ test("uses a stable error code when the search server is unavailable", async () 
     { code: "SEARCH_API_UNAVAILABLE" },
   );
 });
+
+test("names the term the search actually scored, and carries the penalty", async () => {
+  const map = async (result) => {
+    const fetchImpl = async () => ({
+      ok: true,
+      json: async () => ({
+        query: "게임 채팅 성적 욕설",
+        availableCount: 51,
+        comparedCount: 20,
+        scoring: { status: "hybrid_embeddings" },
+        results: [result],
+      }),
+    });
+    const response = await searchSimilarPrecedents({
+      query: "게임 채팅에서 성적인 욕설을 보냈습니다",
+      fetchImpl,
+    });
+    return response.results[0].similarity;
+  };
+
+  const hybrid = await map(VALID_RESULT);
+  assert.equal(hybrid.semantic, 82);
+  assert.equal(hybrid.lexical, null);
+
+  const { semanticScore: _unused, ...withoutEmbedding } = VALID_RESULT;
+  const keyword = await map({ ...withoutEmbedding, lexicalScore: 96, focusPenalty: 15 });
+  // Null rather than zero: a term the search never computed is not one that
+  // scored nothing, and reading it as nothing is what put 의미 0 on the card.
+  assert.equal(keyword.semantic, null);
+  assert.equal(keyword.lexical, 96);
+  assert.equal(keyword.penalty, 15);
+});

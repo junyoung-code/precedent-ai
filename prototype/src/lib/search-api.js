@@ -51,6 +51,18 @@ function safeScore(value) {
   return Math.round(Math.max(0, Math.min(Number(value) || 0, 100)));
 }
 
+/**
+ * A score the search may not have produced at all.
+ *
+ * Exactly one of the two first terms exists per result: the embedding search
+ * scores meaning, the keyword search scores wording. Defaulting the missing one
+ * to zero is what put 의미 0 on every card of a keyword search — a real score of
+ * zero and a term that was never computed are not the same claim.
+ */
+function optionalScore(value) {
+  return value === null || value === undefined ? null : safeScore(value);
+}
+
 function isOfficialUrl(value) {
   try {
     const url = new URL(value);
@@ -134,9 +146,14 @@ function mapResult(result) {
       ? result.precedentFocus
       : "focused",
     similarity: {
-      semantic: safeScore(result.semanticScore),
+      semantic: optionalScore(result.semanticScore),
+      lexical: optionalScore(result.lexicalScore),
       facts: safeScore(result.tagScore),
       issues: safeScore(result.issueScore),
+      // Subtracted from the three terms to reach the total. Without it the
+      // numbers on the card cannot reproduce the number beside them for the
+      // majority of the corpus, whose judgments decide more than this offence.
+      penalty: safeScore(result.focusPenalty),
       total: safeScore(result.retrievalScore),
     },
     similarities: (result.matchedFacts || []).map(matchedFactLabel).filter(Boolean).slice(0, 4),

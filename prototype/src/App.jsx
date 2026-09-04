@@ -489,10 +489,27 @@ function PrecedentCard({ result, rank }) {
         <ScoreRing score={result.similarity.total} />
       </div>
 
+      {/*
+        The first term is whichever one the search actually used: meaning when
+        it ran on embeddings, wording when it did not. It read semanticScore
+        either way and printed 의미 0 through every keyword search — which is
+        the default, since the consent box starts unticked — under a coverage
+        panel that said 키워드·사실 태그 검색 one line above. The penalty is
+        shown for the same reason: without it the numbers here cannot reach the
+        number in the ring for the two thirds of the corpus that decide more
+        than this offence.
+      */}
       <div className="score-breakdown" aria-label="유사도 구성">
-        <span>의미 <strong>{result.similarity.semantic}</strong></span>
+        {result.similarity.semantic === null
+          ? <span>키워드 <strong>{result.similarity.lexical ?? 0}</strong></span>
+          : <span>의미 <strong>{result.similarity.semantic}</strong></span>}
         <span>사실 태그 <strong>{result.similarity.facts}</strong></span>
         <span>쟁점 <strong>{result.similarity.issues}</strong></span>
+        {result.similarity.penalty > 0 && (
+          <span className="score-penalty" title={DISPOSITION_SCOPE_CAVEAT}>
+            다른 죄명 <strong>−{result.similarity.penalty}</strong>
+          </span>
+        )}
         <small>45% + 45% + 10%</small>
       </div>
 

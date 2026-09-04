@@ -316,6 +316,8 @@ button { color: inherit; }
 .score-breakdown { margin: 17px 0; padding: 10px 12px; display: flex; align-items: center; gap: 14px; border-radius: 10px; background: #f7f7fa; color: #7c7e89; font-size: 10px; }
 .score-breakdown strong { color: #343640; }
 .score-breakdown small { margin-left: auto; color: #a2a4ad; }
+.score-penalty { color: #9a5b42; }
+.score-penalty strong { color: #7d4128; }
 .comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
 .comparison-box { padding: 15px 16px; border-radius: 13px; }
 .similarities-box { background: #f1faf7; }

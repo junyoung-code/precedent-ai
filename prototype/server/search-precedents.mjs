@@ -90,6 +90,10 @@ function publicRow(row) {
     summaryVersion: _summaryVersion,
     dispositionOrderText: _dispositionOrderText,
     dispositionKind: _dispositionKind,
+    // The raw ts_rank the lexical term is normalized from. It rode out to the
+    // client on this spread and meant nothing there; what the card needs is the
+    // 0-100 term the ranking actually used, sent under its own name.
+    keywordScore: _keywordScore,
     ...safe
   } = row;
   return { ...safe, summary: publicStoredSummary(row), disposition: publicDisposition(row) };
@@ -116,14 +120,23 @@ export function rankTaggedCandidates(queryFacts, rows, limit) {
       const facts = rowFacts(row);
       const comparison = compareFactTags(queryFacts, facts);
       const keywordScore = Number(row.keywordScore) || 0;
+      // Rounded once, then used for both the ranking and the screen. Rounding
+      // separately for each lets the card show numbers that do not add up to
+      // the total printed beside them.
+      const lexical = lexicalScore(keywordScore);
       const score = scoredFocus(
         row.caseName,
-        lexicalScore(keywordScore) * 0.45 + comparison.factScore * 0.45 + comparison.issueScore * 0.1,
+        lexical * 0.45 + comparison.factScore * 0.45 + comparison.issueScore * 0.1,
       );
 
       return {
         ...publicRow(row),
-        keywordScore,
+        // Named for what it is, and sent at all. The card reads semanticScore,
+        // found none on this path, and printed 의미 0 over the very term that
+        // had produced the total — while the coverage panel above it said the
+        // search had been keyword-based all along. The raw ts_rank this comes
+        // from is not sent: it means nothing on a screen.
+        lexicalScore: lexical,
         tagScore: comparison.factScore,
         issueScore: comparison.issueScore,
         ...score,
@@ -147,13 +160,16 @@ export function rankHybridCandidates(queryFacts, rows, limit) {
       const facts = rowFacts(row);
       const comparison = compareFactTags(queryFacts, facts);
       const semanticScore = Math.max(0, Math.min(Number(row.semanticScore) || 0, 1));
+      // Same rule as the lexical term: the score is built from the number the
+      // reader is shown, not from one rounded a second time afterwards.
+      const semantic = Math.round(semanticScore * 100);
       const score = scoredFocus(
         row.caseName,
-        semanticScore * 100 * 0.45 + comparison.factScore * 0.45 + comparison.issueScore * 0.1,
+        semantic * 0.45 + comparison.factScore * 0.45 + comparison.issueScore * 0.1,
       );
       return {
         ...publicRow(row),
-        semanticScore: Math.round(semanticScore * 100),
+        semanticScore: semantic,
         tagScore: comparison.factScore,
         issueScore: comparison.issueScore,
         ...score,

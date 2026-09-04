@@ -452,3 +452,19 @@ test("every part the tour lights up still exists on the screen", () => {
     }
   }
 });
+
+test("names the term the search used instead of printing 의미 0", () => {
+  // The consent box starts unticked, so the keyword search is what most readers
+  // get — and the card labelled its one missing term 의미 0 directly under a
+  // coverage panel saying 키워드·사실 태그 검색.
+  const breakdown = appSource.slice(
+    appSource.indexOf('className="score-breakdown"'),
+    appSource.indexOf('className="comparison-grid"'),
+  );
+  assert.match(breakdown, /similarity\.semantic === null/);
+  assert.match(breakdown, /키워드 <strong>/);
+  assert.match(breakdown, /의미 <strong>/);
+  // Shown when it applies, because the three terms cannot otherwise reach the
+  // total for a judgment that decided more than this offence.
+  assert.match(breakdown, /similarity\.penalty > 0/);
+});

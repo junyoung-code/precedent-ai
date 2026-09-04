@@ -795,3 +795,48 @@ test("POST /api/analysis reports an element the answer denies", async (t) => {
   assert.equal(mentionOf(denied, "expression"), "absent");
   assert.equal(mentionOf(denied, "medium"), "present");
 });
+
+test("sends the term the ranking used, so the card can add up to the ring", () => {
+  // The card printed 의미 0 through every keyword search — the default, since
+  // the consent box starts unticked — because the only first term it was ever
+  // handed was semanticScore, which this path does not produce. What it was
+  // shown could not reach the total printed beside it.
+  const queryFacts = {
+    medium: "game_chat",
+    messageForm: "text",
+    recipientIdentification: "direct_account",
+    reachedRecipient: "yes",
+    relationship: "game_user",
+    context: "conflict",
+    expressionType: "sexual_text",
+    repetition: "once",
+    issueTags: ["통신매체"],
+  };
+  const focused = "성폭력범죄의처벌등에관한특례법위반(통신매체이용음란)";
+  const mixed = "협박·성폭력범죄의처벌등에관한특례법위반(통신매체이용음란)";
+
+  const reaches = (row) => Math.round(
+    row.lexicalScore * 0.45 + row.tagScore * 0.45 + row.issueScore * 0.1 - row.focusPenalty,
+  );
+
+  for (const caseName of [focused, mixed]) {
+    const [row] = rankTaggedCandidates(queryFacts, [{ id: "p", caseName, keywordScore: 0.4, ...queryFacts }], 3);
+    assert.ok(row, caseName);
+    assert.equal(typeof row.lexicalScore, "number");
+    // The raw ts_rank stays on the server: it means nothing on a screen.
+    assert.equal(Object.hasOwn(row, "keywordScore"), false, caseName);
+    assert.equal(reaches(row), row.retrievalScore, caseName);
+  }
+
+  // The same has to hold on the embedding path, where the number shown is
+  // rounded off a ratio — so the score is built from the rounded number.
+  const [hybrid] = rankHybridCandidates(
+    queryFacts,
+    [{ id: "h", caseName: mixed, semanticScore: 0.817, decisionDate: "2026-03-12", ...queryFacts }],
+    3,
+  );
+  assert.equal(
+    Math.round(hybrid.semanticScore * 0.45 + hybrid.tagScore * 0.45 + hybrid.issueScore * 0.1 - hybrid.focusPenalty),
+    hybrid.retrievalScore,
+  );
+});
