@@ -96,3 +96,21 @@ test("separates an element the user denied from one they did not mention", () =>
   assert.equal(silent.find((item) => item.id === "reached").mention, "unclear");
   assert.equal(silent.find((item) => item.id === "medium").mention, "unclear");
 });
+
+test("reports a denied medium or expression as denied rather than as mentioned", () => {
+  // Every element used to be able to say only 언급됨 or 모르겠다 except arrival,
+  // so a reader denying the account read three ticks back at themselves.
+  const inPerson = mapFactsToArticle13(extractFactTags("카톡이 아니라 직접 만나서 말다툼한 것입니다."));
+  assert.equal(inPerson.find((item) => item.id === "medium").mention, "absent");
+
+  const denied = mapFactsToArticle13(extractFactTags("저는 카톡으로 성적인 말을 한 적이 전혀 없습니다."));
+  assert.equal(denied.find((item) => item.id === "expression").mention, "absent");
+  // The denial is about the words, so the channel they were not sent on stands.
+  assert.equal(denied.find((item) => item.id === "medium").mention, "present");
+
+  // The evidence line is a claim about what the reader wrote, so it may not
+  // describe a mention when what it found was a denial.
+  for (const element of [...inPerson, ...denied].filter((item) => item.mention === "absent")) {
+    assert.doesNotMatch(element.evidence, /확인했습니다/, element.id);
+  }
+});

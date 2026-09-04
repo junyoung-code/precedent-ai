@@ -1126,18 +1126,22 @@ export function App() {
     goHome();
   }
 
-  async function requestAnalysis({ redactedText, precedents }) {
+  // The answers travel with the description because the reading is of the case
+  // as it stands now, not as it was typed before the intake asked. The search
+  // already merges them; this one did not, so an answer to the medium question
+  // left the statute screen still saying it could not find a medium.
+  async function requestAnalysis({ redactedText, answers, precedents }) {
     const token = ++analysisTokenRef.current;
     setAnalysisState({ loading: true, statute: null, elements: [], analysis: null, unavailable: null });
     setWebCases({ loading: true, webCases: [], fetchedAt: null, unavailable: null });
 
     // A cache read, so it lands with the precedent cards rather than behind the
     // model. Deliberately not awaited together with the analysis.
-    fetchWebCases({ redactedText, role, allowExternalAi }).then((found) => {
+    fetchWebCases({ redactedText, answers, role, allowExternalAi }).then((found) => {
       if (token !== analysisTokenRef.current) return;
       setWebCases({ loading: false, ...found });
     });
-    const next = await analyseCase({ redactedText, precedents, allowExternalAi });
+    const next = await analyseCase({ redactedText, answers, precedents, allowExternalAi });
     // A new case may have started while this was in flight.
     if (token !== analysisTokenRef.current) return;
     setAnalysisState({ loading: false, ...next });
@@ -1164,7 +1168,7 @@ export function App() {
       setView("results");
       // Deliberately not awaited: the cards are ready now and the statute
       // reading takes about ten seconds to come back.
-      requestAnalysis({ redactedText, precedents: response.results });
+      requestAnalysis({ redactedText, answers: answersRef.current, precedents: response.results });
     } catch {
       setResults([]);
       setCoverage({ availableCount: null, comparedCount: 0, scoring: null });

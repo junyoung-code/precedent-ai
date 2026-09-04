@@ -4,6 +4,7 @@ import { toVectorLiteral } from "./precedent-embeddings.mjs";
 import {
   classifyPrecedentFocus,
   focusPenalty,
+  inScopeCaseNameSql,
   isFocusedCommunicationObscenity,
 } from "./precedent-scope.mjs";
 import { SUMMARY_VERSION } from "./precedent-summaries.mjs";
@@ -206,7 +207,7 @@ async function searchWithoutEmbeddings({ pool, normalized, queryFacts, fallbackC
     pool.query(
       `SELECT count(*) FROM precedents
        WHERE searchable = true
-         AND case_name ILIKE '%통신매체이용음란%'`,
+         AND ${inScopeCaseNameSql()}`,
     ),
     pool.query(
       `SELECT
@@ -241,7 +242,7 @@ async function searchWithoutEmbeddings({ pool, normalized, queryFacts, fallbackC
          ON s.precedent_id = p.id
         AND s.source_hash = p.source_hash
        WHERE p.searchable = true
-         AND p.case_name ILIKE '%통신매체이용음란%'
+         AND ${inScopeCaseNameSql("p")}
          AND (
            p.search_vector @@ websearch_to_tsquery('simple', $1)
            OR ($2 <> 'unknown' AND f.medium = $2)
@@ -294,7 +295,7 @@ async function searchOutOfScope({ pool, normalized, queryFacts }) {
   const countResult = await pool.query(
     `SELECT count(*) FROM precedents
      WHERE searchable = true
-       AND case_name ILIKE '%통신매체이용음란%'`,
+       AND ${inScopeCaseNameSql()}`,
   );
 
   return {
@@ -334,7 +335,7 @@ export async function searchPrecedents({ pool, query, limit = 5, embeddingClient
     pool.query(
        `SELECT count(*) FROM precedents
        WHERE searchable = true
-         AND case_name ILIKE '%통신매체이용음란%'
+         AND ${inScopeCaseNameSql()}
          AND verified_at IS NOT NULL
          AND link_checked_at >= now() - interval '24 hours'
          AND link_status BETWEEN 200 AND 399
@@ -373,7 +374,7 @@ export async function searchPrecedents({ pool, query, limit = 5, embeddingClient
          ON s.precedent_id = p.id
         AND s.source_hash = p.source_hash
        WHERE p.searchable = true
-         AND p.case_name ILIKE '%통신매체이용음란%'
+         AND ${inScopeCaseNameSql("p")}
          AND p.verified_at IS NOT NULL
          AND p.link_checked_at >= now() - interval '24 hours'
          AND p.link_status BETWEEN 200 AND 399

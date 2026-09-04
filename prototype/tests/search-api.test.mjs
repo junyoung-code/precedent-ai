@@ -734,3 +734,64 @@ test("a search writes down what it spent, without writing down the search", asyn
   await post({ query: "게임 채팅으로 성적인 욕설을 받았습니다.", allowExternalAi: false });
   assert.equal(written.length, 1);
 });
+
+function mentionOf(result, id) {
+  return result.body.elements.find((item) => item.id === id)?.mention;
+}
+
+test("POST /api/analysis reads the intake answers, not only the first description", async (t) => {
+  // The search has always read the description and the answers together. This
+  // did not, so a reader who had just answered the medium question was still
+  // told 전달 수단을 확인하지 못했습니다 by the screen that quotes them back.
+  let received;
+  const analysisClient = {
+    analyze: async (input) => {
+      received = input;
+      return { analysis: { overview: [], elementNotes: [], precedentNotes: [], nextSteps: [] } };
+    },
+  };
+  const server = analysisServer({ analysisClient });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const { port } = server.address();
+
+  const description = "어제 다투다가 심한 말을 들었습니다.";
+
+  const alone = await postAnalysis(port, { redactedText: description, allowExternalAi: true });
+  assert.equal(mentionOf(alone, "medium"), "unclear");
+  assert.equal(mentionOf(alone, "expression"), "unclear");
+
+  const answered = await postAnalysis(port, {
+    redactedText: description,
+    answers: { medium: "카카오톡으로 받았습니다", expressionType: "성적인 욕설이었습니다" },
+    allowExternalAi: true,
+  });
+  assert.equal(mentionOf(answered, "medium"), "present");
+  assert.equal(mentionOf(answered, "expression"), "present");
+
+  // The model reads the same combined text the verdicts were read from, so it
+  // cannot explain an element from a description that no longer stands.
+  assert.match(received.description, /카카오톡으로 받았습니다/);
+  assert.match(received.description, /성적인 욕설이었습니다/);
+});
+
+test("POST /api/analysis reports an element the answer denies", async (t) => {
+  const analysisClient = {
+    analyze: async () => ({ analysis: { overview: [], elementNotes: [], precedentNotes: [], nextSteps: [] } }),
+  };
+  const server = analysisServer({ analysisClient });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const { port } = server.address();
+
+  const denied = await postAnalysis(port, {
+    redactedText: "어제 게임에서 다툼이 있었습니다.",
+    answers: { expressionType: "성적인 말은 한 적 없습니다" },
+    allowExternalAi: true,
+  });
+
+  // The whole point of opening absent on this element: a reader who denies it
+  // has somewhere for the denial to land.
+  assert.equal(mentionOf(denied, "expression"), "absent");
+  assert.equal(mentionOf(denied, "medium"), "present");
+});

@@ -226,7 +226,10 @@ test("keeps similar posts on the free side of the gate", () => {
   // They come from our own cache, so they cost nothing per reader and stay
   // visible whether or not the analysis is unlocked.
   assert.match(appSource, /<AiSummaryPanel state=\{state\} \/>\s*\n\s*<WebCasesPanel state=\{webCasesState\} \/>/);
-  assert.match(appSource, /fetchWebCases\(\{ redactedText, role, allowExternalAi \}\)/);
+  // Matched loosely on purpose: what this guards is that the call carries the
+  // case and the consent flag and nothing else stands between it and the
+  // reader, not the exact spelling of its argument list.
+  assert.match(appSource, /fetchWebCases\(\{[^}]*redactedText[^}]*allowExternalAi[^}]*\}\)/);
   // Dated, because a cached batch is not what the web looks like right now.
   assert.match(appSource, /일 기준입니다/);
 });

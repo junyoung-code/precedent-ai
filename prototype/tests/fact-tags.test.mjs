@@ -158,3 +158,61 @@ test("does not find a game in 컨트롤, 스크롤, 트롤 or 롤케이크", () 
   // 걸레 is a cleaning rag before it is an insult.
   assert.equal(extractFactTags("걸레로 바닥을 닦았습니다.").expressionType, "other");
 });
+
+test("does not read a noun as proof the message arrived", () => {
+  // 메시지 names a thing, not an event. On the arrival list it turned a reader
+  // saying they never saw the message into the screen telling them they had.
+  const unseen = "카톡으로 성적인 메시지가 왔다는데 저는 차단해둬서 못 봤어요.";
+  assert.equal(extractFactTags(unseen).reachedRecipient, "unknown");
+
+  // And the answer cannot hang on a spelling: 메세지 is the misspelling the
+  // medium rules already read, and it used to give the opposite result here.
+  assert.equal(
+    extractFactTags(unseen.replace("메시지", "메세지")).reachedRecipient,
+    extractFactTags(unseen).reachedRecipient,
+  );
+});
+
+test("tells a message that never arrived from one that went unread", () => {
+  // Denied outright.
+  assert.equal(extractFactTags("상대가 글을 올렸지만 저에게 도달하지 않았습니다.").reachedRecipient, "no");
+  // Arrived, unread. Neither answer is the reader's, so neither is given —
+  // and the affirmative word in the same sentence must not decide it.
+  assert.equal(extractFactTags("카톡으로 성적인 말을 받았지만 읽지 않았습니다.").reachedRecipient, "unknown");
+  // Still read when the description does report it.
+  assert.equal(extractFactTags("알림으로 바로 받았습니다.").reachedRecipient, "yes");
+});
+
+test("reports an element the description denies, and the channel it rules out", () => {
+  // The words are denied; the 카톡 they were not sent on is not.
+  const words = extractFactTags("저는 카톡으로 성적인 말을 한 적이 전혀 없습니다.");
+  assert.deepEqual(words.deniedElements, ["expression"]);
+  assert.equal(words.medium, "kakao");
+
+  // Two words for the same element are one denial, not one denial and one mention.
+  assert.deepEqual(extractFactTags("성적인 사진은 보낸 적이 없습니다.").deniedElements, ["expression"]);
+
+  // A channel that is named only to be ruled out is not the channel to search on.
+  const inPerson = extractFactTags("카톡이 아니라 직접 만나서 말다툼한 것입니다.");
+  assert.deepEqual(inPerson.deniedElements, ["medium"]);
+  assert.equal(inPerson.medium, "unknown");
+});
+
+test("does not read a denial into a correction or an ordinary complaint", () => {
+  // A correction offers a replacement, so the element stands and only the
+  // ruled-out channel goes.
+  const corrected = extractFactTags("카톡은 아니고 문자로 성적인 말을 받았습니다.");
+  assert.deepEqual(corrected.deniedElements, []);
+  assert.equal(corrected.medium, "digital_message");
+
+  for (const description of [
+    // 없 inside "참을 수 없었습니다" is not a denial of anything.
+    "게임 채팅으로 성적인 욕설을 들어서 정말 참을 수 없었습니다.",
+    // The denial belongs to its own clause and stops at the boundary.
+    "카톡이 아니라 게임 채팅으로 성적인 욕을 들었어요.",
+    "온라인 게임에서 처음 만난 상대가 채팅창으로 성적인 욕설을 한 번 보냈습니다.",
+    "게임에서 진 뒤에 느금마 소리를 계속 들었습니다.",
+  ]) {
+    assert.deepEqual(extractFactTags(description).deniedElements, [], description);
+  }
+});

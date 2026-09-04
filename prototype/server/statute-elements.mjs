@@ -55,29 +55,36 @@ function element(id, mention, evidence) {
  * element between states.
  */
 export function mapFactsToArticle13(facts = {}) {
+  const denied = new Set(Array.isArray(facts.deniedElements) ? facts.deniedElements : []);
   const medium = facts.medium && facts.medium !== "unknown" ? facts.medium : null;
   const expressionType = facts.expressionType && facts.expressionType !== "other" ? facts.expressionType : null;
+
+  // A denial outranks a detection, because both are read from the same words.
+  // "카톡이 아니라 직접 만나서" names 카톡 in order to rule it out, and reporting
+  // that back as 입력에 언급됨 told readers they had said the opposite of
+  // what they wrote. Arrival has been able to say this since the start; the
+  // other two could only ever say "언급됨" or "모르겠다", which left a reader
+  // denying the whole account with no way for the screen to show it.
+  const mediumReading = denied.has("medium")
+    ? ["absent", "입력에서 그 매체로 전달한 것이 아니라는 언급을 찾았습니다."]
+    : medium
+      ? ["present", `입력에서 ${MEDIUM_LABELS[medium] || medium}을 확인했습니다.`]
+      : ["unclear", "입력에서 전달 수단을 확인하지 못했습니다."];
+
+  const expressionReading = denied.has("expression")
+    ? ["absent", "입력에서 그런 표현을 하지 않았다는 언급을 찾았습니다."]
+    : expressionType
+      ? ["present", `입력에서 ${EXPRESSION_LABELS[expressionType] || expressionType}을 확인했습니다.`]
+      : ["unclear", "입력에서 성적 표현에 관한 언급을 확인하지 못했습니다."];
 
   return [
     // Purpose is a state of mind. A description cannot establish it and courts
     // infer it from the circumstances as a whole, so this never reads as settled.
     element("purpose", "unclear", "입력만으로는 알 수 없는 요건입니다. 법원이 여러 사정을 종합해 판단합니다."),
 
-    element(
-      "medium",
-      medium ? "present" : "unclear",
-      medium
-        ? `입력에서 ${MEDIUM_LABELS[medium] || medium}을 확인했습니다.`
-        : "입력에서 전달 수단을 확인하지 못했습니다.",
-    ),
+    element("medium", ...mediumReading),
 
-    element(
-      "expression",
-      expressionType ? "present" : "unclear",
-      expressionType
-        ? `입력에서 ${EXPRESSION_LABELS[expressionType] || expressionType}을 확인했습니다.`
-        : "입력에서 성적 표현에 관한 언급을 확인하지 못했습니다.",
-    ),
+    element("expression", ...expressionReading),
 
     element(
       "reached",

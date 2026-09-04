@@ -8,6 +8,13 @@
  *
  * The reported side is worded so it never assumes the reader did it. Someone
  * answering a complaint they deny still has to be able to describe it.
+ *
+ * Two of the questions carry a denial example. The statute screen can report an
+ * element as "아니라고 적음" now, but only a reader who writes the denial out can
+ * produce one, and the rules read a denial narrowly on purpose: "성적인 말은
+ * 없었습니다" is not one of them, because a bare 없 also ends "참을 수 없었습니다".
+ * So the examples show a shape the rules actually read rather than one that
+ * merely sounds natural.
  */
 const QUESTION_DEFINITIONS = [
   // Asked first: an unreadable expression is the one gap that ends the search
@@ -16,22 +23,22 @@ const QUESTION_DEFINITIONS = [
     field: "expressionType",
     victim: {
       prompt: "상대가 보낸 내용은 어떤 것이었나요?",
-      hint: "들은 말을 그대로 적으셔도 됩니다.",
+      hint: "들은 말을 그대로 적으셔도 됩니다. 성적인 내용이 아니었다면 「성적인 말은 아니었습니다」처럼 적어주세요.",
     },
     reported: {
       prompt: "문제가 된 내용은 어떤 것이었나요?",
-      hint: "오간 말을 그대로 적으셔도 됩니다.",
+      hint: "오간 말을 그대로 적으셔도 됩니다. 그런 내용이 아니었다면 「성적인 말은 한 적 없습니다」처럼 적어주세요.",
     },
   },
   {
     field: "medium",
     victim: {
       prompt: "어떤 경로로 받으셨나요?",
-      hint: "예: 카카오톡 · 게임 채팅 · SNS 디엠 · 문자",
+      hint: "예: 카카오톡 · 게임 채팅 · SNS 디엠 · 문자. 통신으로 받은 것이 아니라면 「카톡이 아니라 직접 들었습니다」처럼 적어주세요.",
     },
     reported: {
       prompt: "어떤 경로로 오간 내용인가요?",
-      hint: "예: 카카오톡 · 게임 채팅 · SNS 디엠 · 문자",
+      hint: "예: 카카오톡 · 게임 채팅 · SNS 디엠 · 문자. 통신으로 오간 것이 아니라면 「카톡이 아니라 만나서 말했습니다」처럼 적어주세요.",
     },
   },
   {

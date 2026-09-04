@@ -1,5 +1,6 @@
 import { validateGroundedSummary } from "./grounded-summary.mjs";
 import {
+  inScopeCaseNameSql,
   isFocusedCommunicationObscenity,
   selectCommunicationObscenityParagraphs,
 } from "./precedent-scope.mjs";
@@ -49,7 +50,7 @@ export async function backfillPrecedentSummaries({ pool, summaryClient, limit = 
      JOIN precedent_paragraphs pp ON pp.precedent_id = p.id
      LEFT JOIN precedent_summaries s ON s.precedent_id = p.id
      WHERE p.searchable = true
-       AND p.case_name ILIKE '%통신매체이용음란%'
+       AND ${inScopeCaseNameSql("p")}
        AND p.verified_at IS NOT NULL
        AND p.link_status BETWEEN 200 AND 399
      GROUP BY p.id, p.case_name, p.source_hash, s.source_hash, s.summary_version, s.model

@@ -43,6 +43,27 @@ function intakeInputError() {
 }
 
 /**
+ * The case as the reader described it, follow-up answers included.
+ *
+ * The search has always read it this way — the intake merges the answers into
+ * the query before ranking. Nothing else did, so a reader who answered the
+ * medium question was still told 전달 수단을 확인하지 못했습니다 on the statute
+ * screen, and an answer that denied an element could not produce 아니라고 적음
+ * at all: the reading was taken from the text as it stood before the questions
+ * were asked. Joined with a newline because that is a clause boundary to the
+ * rules, so one answer cannot run into the next.
+ */
+function describedCase(body) {
+  const redactedText = String(body.redactedText || "").trim();
+  const source = body.answers;
+  const answers = Array.isArray(source)
+    ? source
+    : Object.values(source && typeof source === "object" ? source : {});
+  const written = answers.map((value) => String(value || "").trim()).filter(Boolean);
+  return { redactedText, described: [redactedText, ...written].join("\n") };
+}
+
+/**
  * Explains the statute against what the user wrote and what the search found.
  *
  * A separate request from the search on purpose: the precedent cards are ready
@@ -50,7 +71,7 @@ function intakeInputError() {
  * stored — the description arrives, is analysed, and is gone with the response.
  */
 async function analyseCase({ pool, body, analysisClient, extractFacts, entitlement = { analysis: true }, offline = false }) {
-  const redactedText = String(body.redactedText || "").trim();
+  const { redactedText, described } = describedCase(body);
   if (!redactedText) throw intakeInputError();
   if (!analysisClient) return { analysis: null, unavailable: "ANALYSIS_DISABLED" };
 
@@ -58,7 +79,7 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, entitleme
   if (!statute) return { analysis: null, unavailable: "STATUTE_MISSING" };
 
   const precedents = Array.isArray(body.precedents) ? body.precedents.slice(0, 5) : [];
-  const facts = extractFacts(redactedText);
+  const facts = extractFacts(described);
   const elements = mapFactsToArticle13(facts);
   const publicElements = elements.map(({ id, label, statuteQuote, mention, evidence }) => ({ id, label, statuteQuote, mention, evidence }));
   const publicStatute = {
@@ -89,7 +110,7 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, entitleme
   const started = Date.now();
   try {
     const result = await analysisClient.analyze({
-      statute, elements, description: redactedText, precedents,
+      statute, elements, description: described, precedents,
     });
     payload = result.analysis;
     await recordApiUsage({
@@ -123,11 +144,11 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, entitleme
  * seconds, and a reader without a plan still gets it.
  */
 async function readWebCases({ pool, body, analysisClient, extractFacts, readWeb = readWebCasesWithRefresh, offline = false }) {
-  const redactedText = String(body.redactedText || "").trim();
+  const { redactedText, described } = describedCase(body);
   if (!redactedText) throw intakeInputError();
   if (body.allowExternalAi !== true) return { webCases: [], fetchedAt: null, unavailable: "ANALYSIS_DISABLED" };
 
-  const facts = extractFacts(redactedText);
+  const facts = extractFacts(described);
   const queryKey = buildWebSearchQuery(facts);
   // Passing no client is what stops a stale row from starting a paid refresh.
   const cached = await readWeb({ pool, client: offline ? null : analysisClient, queryKey });

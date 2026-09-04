@@ -67,13 +67,15 @@ function mapWebCases(value) {
  * with the precedent cards instead of behind a ten-second call, and a reader
  * without a plan still gets it.
  */
-export async function fetchWebCases({ redactedText, role = null, allowExternalAi = false, fetchImpl = fetch, signal } = {}) {
+export async function fetchWebCases({
+  redactedText, answers = null, role = null, allowExternalAi = false, fetchImpl = fetch, signal,
+} = {}) {
   let response;
   try {
     response = await fetchImpl("/api/web-cases", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ redactedText, role, allowExternalAi: allowExternalAi === true }),
+      body: JSON.stringify({ redactedText, answers, role, allowExternalAi: allowExternalAi === true }),
       signal,
     });
     if (!response.ok) return { webCases: [], fetchedAt: null, unavailable: "WEB_CASES_UNAVAILABLE" };
@@ -91,6 +93,10 @@ export async function fetchWebCases({ redactedText, role = null, allowExternalAi
 
 export async function analyseCase({
   redactedText,
+  // What the reader typed into the follow-up questions. The server reads the
+  // description and these together, the way the search already does — without
+  // them the statute screen answers from the text as it stood before it asked.
+  answers = null,
   precedents = [],
   allowExternalAi = false,
   fetchImpl = fetch,
@@ -103,6 +109,7 @@ export async function analyseCase({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         redactedText,
+        answers,
         allowExternalAi: allowExternalAi === true,
         // Only what the analysis is allowed to cite travels with the request.
         precedents: precedents.slice(0, 5).map((item) => ({

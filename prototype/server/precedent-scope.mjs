@@ -37,6 +37,20 @@ export function isCommunicationObscenityCaseName(caseName) {
   return String(caseName || "").normalize("NFKC").includes(TARGET_OFFENSE);
 }
 
+/**
+ * The SQL half of the same gate, built from the same term.
+ *
+ * Six queries need it — two counts, two candidate lists, the summary backfill —
+ * and each of them carried its own copy of the literal. That is how the number
+ * on the top bar came to be defined in six places at once: a judgment stored
+ * under a differently formatted case name is searchable, uncounted, and never
+ * ranked, with nothing failing to say so. Any new source of judgments hits this
+ * first, so it lives beside the function that reads the same name in JavaScript.
+ */
+export function inScopeCaseNameSql(alias = "") {
+  return `${alias ? `${alias}.` : ""}case_name ILIKE '%${TARGET_OFFENSE}%'`;
+}
+
 export function isFocusedCommunicationObscenity(caseName) {
   return compact(caseName).includes(TARGET_OFFENSE)
     && classifyPrecedentFocus(caseName) === "focused";

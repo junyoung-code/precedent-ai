@@ -1,8 +1,10 @@
+import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   classifyPrecedentFocus,
   focusPenalty,
+  inScopeCaseNameSql,
   isCommunicationObscenityCaseName,
   isFocusedCommunicationObscenity,
   selectCommunicationObscenityParagraphs,
@@ -81,4 +83,26 @@ test("does not fall back to the whole judgment when fewer than three paragraphs 
     { paragraphId: "p2", ordinal: 2, body: "한 개의 인접 문단" },
   ]);
   assert.deepEqual(selected, []);
+});
+
+test("keeps one copy of the case-name gate every query shares", async () => {
+  // Six queries used to carry their own copy of the literal, which is how the
+  // count on the top bar came to be defined in six places at once. A judgment
+  // stored under a differently formatted name would be searchable, uncounted
+  // and never ranked, and nothing would fail to say so — the trap any new
+  // source of judgments walks into first.
+  assert.equal(inScopeCaseNameSql(), "case_name ILIKE '%통신매체이용음란%'");
+  assert.equal(inScopeCaseNameSql("p"), "p.case_name ILIKE '%통신매체이용음란%'");
+
+  for (const file of ["../server/search-precedents.mjs", "../server/precedent-summaries.mjs"]) {
+    const source = await readFile(new URL(file, import.meta.url), "utf8");
+    assert.doesNotMatch(source, /case_name ILIKE/, `${file} grew its own copy of the gate`);
+  }
+
+  // And the JavaScript half must still read the same name the SQL does, so
+  // collection cannot store what the search can never return.
+  assert.equal(
+    isCommunicationObscenityCaseName("성폭력범죄의처벌등에관한특례법위반(통신매체이용음란)"),
+    inScopeCaseNameSql().includes("통신매체이용음란"),
+  );
 });
