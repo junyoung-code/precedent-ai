@@ -630,6 +630,19 @@ button { color: inherit; }
 /* Posts strangers wrote. The card is deliberately the least authoritative thing
    on the page: warmer border, warning above the list rather than below it. */
 .web-cases { border-color: #ddd0c4; background: #fbf7f3; }
+/* Not generated, and told apart from the AI cards on the same screen by the
+   same means the disposition box uses: its own ground and a badge. */
+.procedure-card { border-color: #d8dfe0; background: #f5f9f8; }
+.procedure-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; }
+.procedure-heading h3 { margin: 0; }
+.procedure-badge { padding: 3px 8px; border-radius: 999px; background: #e2efeb; color: #266b58; font-size: 9.5px; font-weight: 800; }
+.procedure-stages { margin: 0; padding-left: 19px; display: grid; gap: 15px; }
+.procedure-stages h4 { margin: 0 0 5px; font-size: 13px; color: #2b2e3f; }
+.procedure-stages p { margin: 0; color: #3f4252; font-size: 13px; line-height: 1.75; }
+.procedure-sources { margin-top: 7px !important; display: flex; flex-wrap: wrap; gap: 10px; }
+.procedure-sources a { color: #2f6d5b; font-size: 11px; font-weight: 700; text-decoration: none; }
+.procedure-sources a:hover { text-decoration: underline; }
+
 .web-cases-warning { margin: 0 0 14px !important; padding: 12px 14px; border-radius: 10px; border: 1px solid #e4d2c2; background: #fdf1e6; color: #6b4327 !important; font-size: 12.5px !important; }
 .web-case-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
 .web-case { padding: 14px 16px; border: 1px solid #e8ded3; border-radius: 12px; background: #fff; }

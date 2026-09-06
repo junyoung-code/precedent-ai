@@ -4,6 +4,7 @@ import { redactSensitiveText } from "./lib/privacy-redaction.js";
 import { abandonIntake, answerIntake, cancelIntake, completeIntake, createIntake } from "./lib/intake-api.js";
 import { analyseCase, fetchWebCases } from "./lib/analysis-api.js";
 import { WEB_SOURCE_TYPE_LABEL } from "./lib/web-case-vocab.js";
+import { PROCEDURE_CAUTION, procedureStages } from "./lib/procedure-timeline.js";
 import {
   GUIDE_ANALYSIS,
   GUIDE_ANSWER_LENGTH,
@@ -867,7 +868,7 @@ const RESULT_SCREENS = [
  * one animates, so the deck is as tall as what is on screen rather than as
  * tall as its longest screen.
  */
-function ResultDeck({ precedents, resultCount, analysisState, webCasesState, onNewCase, index: controlledIndex, onIndexChange }) {
+function ResultDeck({ precedents, resultCount, analysisState, webCasesState, role, onNewCase, index: controlledIndex, onIndexChange }) {
   const [ownIndex, setOwnIndex] = useState(0);
   const index = controlledIndex ?? ownIndex;
   const setIndex = onIndexChange ?? setOwnIndex;
@@ -899,8 +900,9 @@ function ResultDeck({ precedents, resultCount, analysisState, webCasesState, onN
     ),
     summary: (
       <>
-        <p className="screen-lead">AI가 쓴 설명입니다. 판례 화면의 기록과 성격이 다릅니다.</p>
+        <p className="screen-lead">이 화면은 AI가 쓴 설명과, 생성하지 않은 절차 안내가 함께 있습니다. 카드마다 어느 쪽인지 적혀 있습니다.</p>
         <AiSummaryPanel state={state} />
+        <ProcedurePanel role={role} />
         <WebCasesPanel state={webCasesState} />
       </>
     ),
@@ -974,7 +976,7 @@ function ResultDeck({ precedents, resultCount, analysisState, webCasesState, onN
 }
 
 
-function ResultsView({ description, results, coverage, searchFailed, onRetry, onRevise, onNewCase, resultsStartRef, analysisState, webCasesState }) {
+function ResultsView({ description, results, coverage, searchFailed, onRetry, onRevise, onNewCase, resultsStartRef, analysisState, webCasesState, role }) {
   const [showAll, setShowAll] = useState(false);
   const facts = useMemo(() => extractCaseFacts(description), [description]);
   const visibleResults = showAll ? results : results.slice(0, 3);
@@ -1040,6 +1042,7 @@ function ResultsView({ description, results, coverage, searchFailed, onRetry, on
           resultCount={results.length}
           analysisState={analysisState}
           webCasesState={webCasesState}
+          role={role}
           onNewCase={onNewCase}
         />
       )}
@@ -1310,6 +1313,7 @@ export function App() {
                 resultsStartRef={resultsStartRef}
                 analysisState={analysisState}
                 webCasesState={webCasesState}
+                role={role}
               />
             )}
             {view === "guide" && <GuideView onClose={closeGuide} />}
@@ -1590,6 +1594,7 @@ function GuideScene({ step, description, answers }) {
         resultCount={1}
         analysisState={GUIDE_ANALYSIS_STATE}
         webCasesState={GUIDE_WEB_STATE}
+        role={step.role || ""}
         onNewCase={guideNoop}
         index={step.deck}
         onIndexChange={guideNoop}
@@ -1726,5 +1731,50 @@ function GuideView({ onClose }) {
         </button>
       </div>
     </section>
+  );
+}
+
+/**
+ * What happens after this, for the side the reader is on.
+ *
+ * Not generated, and not behind anything. The procedure is the same for
+ * everyone who arrives here, so a model wrote a version of it once per reader
+ * — behind a plan, in sentences nobody had checked. This is written once, held
+ * to the same censor a model's sentences pass, and shown whether or not the
+ * analysis is unlocked.
+ *
+ * Nothing renders without a side. A procedure told from the wrong position
+ * tells a reader waiting for a notice that they should be filing, and someone
+ * already summoned that nothing has started yet.
+ */
+function ProcedurePanel({ role }) {
+  const stages = procedureStages(role);
+  if (!stages) return null;
+
+  return (
+    <div className="analysis-card procedure-card">
+      <div className="procedure-heading">
+        <h3>이후 절차</h3>
+        <span className="procedure-badge">AI 생성 아님</span>
+      </div>
+      <ol className="procedure-stages">
+        {stages.map((stage) => (
+          <li key={stage.id}>
+            <h4>{stage.title}</h4>
+            <p>{stage.body}</p>
+            {stage.sources.length > 0 && (
+              <p className="procedure-sources">
+                {stage.sources.map((item) => (
+                  <a key={item.url} href={item.url} target="_blank" rel="noopener noreferrer">
+                    {item.label} <span aria-hidden="true">↗</span>
+                  </a>
+                ))}
+              </p>
+            )}
+          </li>
+        ))}
+      </ol>
+      <p className="source-reminder">{PROCEDURE_CAUTION}</p>
+    </div>
   );
 }

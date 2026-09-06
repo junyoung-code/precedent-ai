@@ -161,7 +161,9 @@ test("moves between records and generated text one screen at a time", () => {
   assert.match(appSource, /hidden=\{position !== index\}/);
   // A generated screen says so on the screen and on the arrow that leads to it.
   assert.match(appSource, /screen\.generated && <span className="screen-ai"/);
-  assert.match(appSource, /AI가 쓴 설명입니다\. 판례 화면의 기록과 성격이 다릅니다/);
+  // The last screen carries both kinds now, so its lead names both rather
+  // than describing everything on it as written by a model.
+  assert.match(appSource, /AI가 쓴 설명과, 생성하지 않은 절차 안내가 함께 있습니다/);
 });
 
 test("shows the wait as steps rather than one stalled line", () => {
@@ -225,7 +227,11 @@ test("does not sell a verdict", () => {
 test("keeps similar posts on the free side of the gate", () => {
   // They come from our own cache, so they cost nothing per reader and stay
   // visible whether or not the analysis is unlocked.
-  assert.match(appSource, /<AiSummaryPanel state=\{state\} \/>\s*\n\s*<WebCasesPanel state=\{webCasesState\} \/>/);
+  // Siblings of the AI card rather than children of it — that, not their
+  // order among themselves, is what keeps them out from behind the gate.
+  const deck = appSource.slice(appSource.indexOf("const panels = {"), appSource.indexOf("function ResultsView"));
+  assert.ok(deck.includes("<AiSummaryPanel state={state} />"));
+  assert.ok(deck.includes("<WebCasesPanel state={webCasesState} />"));
   // Matched loosely on purpose: what this guards is that the call carries the
   // case and the consent flag and nothing else stands between it and the
   // reader, not the exact spelling of its argument list.
@@ -467,4 +473,22 @@ test("names the term the search used instead of printing 의미 0", () => {
   // Shown when it applies, because the three terms cannot otherwise reach the
   // total for a judgment that decided more than this offence.
   assert.match(breakdown, /similarity\.penalty > 0/);
+});
+
+test("keeps the written procedure outside the gate the AI cards sit behind", () => {
+  // It is the same for every reader and nothing generates it, so a plan and a
+  // consent box have no say in whether it renders. Rendering it inside
+  // AiSummaryPanel would hide it behind both, since that component returns the
+  // locked card whenever there is no analysis to show.
+  const deck = appSource.slice(appSource.indexOf("const panels = {"), appSource.indexOf("function ResultsView"));
+  assert.match(deck, /<AiSummaryPanel state=\{state\} \/>\s*\n\s*<ProcedurePanel role=\{role\} \/>/);
+
+  // Nothing renders without a side to tell it from.
+  const panel = appSource.slice(appSource.indexOf("function ProcedurePanel"));
+  assert.match(panel, /if \(!stages\) return null;/);
+  assert.match(panel, /AI 생성 아님/);
+
+  // The screen lead used to say the whole screen was written by a model.
+  assert.doesNotMatch(appSource, /screen-lead">AI가 쓴 설명입니다/);
+  assert.match(appSource, /생성하지 않은 절차 안내가 함께 있습니다/);
 });
