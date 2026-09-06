@@ -857,7 +857,11 @@ function motionBehavior() {
 const RESULT_SCREENS = [
   { id: "precedents", title: "닮은 판례", generated: false },
   { id: "statute", title: "법조문에 비춰본 내 상황", generated: true },
-  { id: "summary", title: "AI가 정리한 내 사건", generated: true },
+  // Named for both halves since the procedure arrived. It read AI가 정리한 내
+  // 사건 over a screen whose only content, for a reader who declined the
+  // analysis, is the one card no model wrote. The AI mark stays: it says which
+  // screen the generated part lives on, and each card says which kind it is.
+  { id: "summary", title: "내 사건 정리와 이후 절차", generated: true },
 ];
 
 /**

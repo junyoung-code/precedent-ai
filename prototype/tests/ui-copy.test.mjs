@@ -153,7 +153,10 @@ test("moves between records and generated text one screen at a time", () => {
   assert.match(appSource, /aria-label=\{`이전 화면: \$\{previous\.title\}`\}/);
   assert.match(appSource, /className="deck-arrow-label">\{next\.title\}/);
   assert.match(appSource, /법조문에 비춰본 내 상황/);
-  assert.match(appSource, /AI가 정리한 내 사건/);
+  // The last screen holds a written procedure as well as generated text, so
+  // its name may not describe the whole of it as something a model wrote.
+  assert.match(appSource, /title: "내 사건 정리와 이후 절차"/);
+  assert.doesNotMatch(appSource, /title: "AI가 정리한 내 사건"/);
   // Arrow keys move the deck too.
   assert.match(appSource, /event\.key === "ArrowRight"/);
   assert.match(appSource, /event\.key === "ArrowLeft"/);
