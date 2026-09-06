@@ -4,6 +4,7 @@ import { validateGroundedAnalysis } from "../server/grounded-analysis.mjs";
 import { INTAKE_ROLES } from "../server/intake-questions.mjs";
 import {
   PROCEDURE_CAUTION,
+  PROCEDURE_LEAD,
   PROCEDURE_STAGES,
   procedureStages,
 } from "../src/lib/procedure-timeline.js";
@@ -24,9 +25,9 @@ test("holds the written procedure to the censor a model's sentences pass", () =>
     assert.equal(checked.overview.length, 2, `${role}/${stage.id} lost a line`);
   }
 
-  const caution = validateGroundedAnalysis({ overview: [PROCEDURE_CAUTION] }, new Set());
-  assert.deepEqual(caution.dropped, []);
-  assert.equal(caution.overview.length, 1);
+  const around = validateGroundedAnalysis({ overview: [PROCEDURE_LEAD, PROCEDURE_CAUTION] }, new Set());
+  assert.deepEqual(around.dropped, []);
+  assert.equal(around.overview.length, 2);
 });
 
 test("walks each side from where that side actually starts", () => {
@@ -81,6 +82,9 @@ test("describes the procedure without advising on the case", () => {
     assert.equal(spoken.includes(banned), false, `banned procedure copy: ${banned}`);
   }
   assert.match(PROCEDURE_CAUTION, /결과나 대응 방법을 알려드리는 것이 아닙니다/);
+  // The badge says what this is not. The line beside it has to say what it is,
+  // and the part that matters is that it is not about this reader.
+  assert.match(PROCEDURE_LEAD, /모든 이용자에게 같은 내용/);
 });
 
 test("shows nothing when it does not know which side to tell it from", () => {

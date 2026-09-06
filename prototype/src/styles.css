@@ -633,8 +633,9 @@ button { color: inherit; }
 /* Not generated, and told apart from the AI cards on the same screen by the
    same means the disposition box uses: its own ground and a badge. */
 .procedure-card { border-color: #d8dfe0; background: #f5f9f8; }
-.procedure-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; }
-.procedure-heading h3 { margin: 0; }
+.procedure-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 9px; margin-bottom: 5px; }
+.procedure-heading h3 { margin: 0; font-size: 18px; letter-spacing: -.02em; color: #1f4c40; }
+.procedure-lead { margin: 0 0 17px !important; color: #6b7a76 !important; font-size: 11.5px !important; line-height: 1.6 !important; }
 .procedure-badge { padding: 3px 8px; border-radius: 999px; background: #e2efeb; color: #266b58; font-size: 9.5px; font-weight: 800; }
 .procedure-stages { margin: 0; padding-left: 19px; display: grid; gap: 15px; }
 .procedure-stages h4 { margin: 0 0 5px; font-size: 13px; color: #2b2e3f; }

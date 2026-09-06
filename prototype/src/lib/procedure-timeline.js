@@ -114,6 +114,20 @@ export const PROCEDURE_STAGES = Object.freeze({
 });
 
 /**
+ * Said under the heading, where the badge is.
+ *
+ * AI 생성 아님 on its own says what this is not. What a reader needs to know
+ * is what it is: written once from the statutes, and the same for everyone —
+ * which is exactly how it differs from the two cards above it, both of which
+ * are about this reader's own case.
+ *
+ * Visible rather than a tooltip. Most of these readers arrive on a phone,
+ * where there is no hover, and a service whose claim is that it marks what a
+ * model wrote cannot put the marking behind a mouse.
+ */
+export const PROCEDURE_LEAD = "조문을 근거로 미리 작성한 안내이며, 모든 이용자에게 같은 내용이 표시됩니다.";
+
+/**
  * Said once, under the whole timeline. The panel is the one place on the
  * result screen that is not about this reader's case, and a procedure read as
  * an instruction is the thing this may not become.

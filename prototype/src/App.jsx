@@ -4,7 +4,7 @@ import { redactSensitiveText } from "./lib/privacy-redaction.js";
 import { abandonIntake, answerIntake, cancelIntake, completeIntake, createIntake } from "./lib/intake-api.js";
 import { analyseCase, fetchWebCases } from "./lib/analysis-api.js";
 import { WEB_SOURCE_TYPE_LABEL } from "./lib/web-case-vocab.js";
-import { PROCEDURE_CAUTION, procedureStages } from "./lib/procedure-timeline.js";
+import { PROCEDURE_CAUTION, PROCEDURE_LEAD, procedureStages } from "./lib/procedure-timeline.js";
 import {
   GUIDE_ANALYSIS,
   GUIDE_ANSWER_LENGTH,
@@ -1761,6 +1761,7 @@ function ProcedurePanel({ role }) {
         <h3>이후 절차</h3>
         <span className="procedure-badge">AI 생성 아님</span>
       </div>
+      <p className="procedure-lead">{PROCEDURE_LEAD}</p>
       <ol className="procedure-stages">
         {stages.map((stage) => (
           <li key={stage.id}>
