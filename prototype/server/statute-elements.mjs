@@ -44,6 +44,32 @@ const EXPRESSION_LABELS = {
   sexual_image: "성적인 이미지",
 };
 
+/**
+ * How arrival reads from each side of the same event.
+ *
+ * 상대방 in the article means whoever the message reached, and that is the
+ * reader when the reader is the one who received it. The intake questions were
+ * rewritten to stop saying 상대방 for this exact reason — a victim is asked
+ * "그 내용이 실제로 회원님에게 도착했나요?" — but the reading underneath still
+ * answered them with 상대방이 내용을 확인했다, naming the sender as the one
+ * who saw it. Every line here is still only about what the description says.
+ */
+const ARRIVAL_EVIDENCE = {
+  victim: {
+    yes: "입력에서 회원님이 그 내용을 확인하셨다는 언급을 찾았습니다.",
+    no: "입력에서 회원님에게 전달되지 않았다는 언급을 찾았습니다.",
+  },
+  reported: {
+    yes: "입력에서 상대가 내용을 확인했다는 언급을 찾았습니다.",
+    no: "입력에서 상대에게 전달되지 않았다는 언급을 찾았습니다.",
+  },
+  // No side chosen: name neither of them rather than guess one.
+  neutral: {
+    yes: "입력에서 내용이 도달했다는 언급을 찾았습니다.",
+    no: "입력에서 전달되지 않았다는 언급을 찾았습니다.",
+  },
+};
+
 function element(id, mention, evidence) {
   const definition = ARTICLE_13_ELEMENTS.find((item) => item.id === id);
   return { ...definition, mention, evidence };
@@ -54,7 +80,8 @@ function element(id, mention, evidence) {
  * result rather than asked to produce it, so no generated text can move an
  * element between states.
  */
-export function mapFactsToArticle13(facts = {}) {
+export function mapFactsToArticle13(facts = {}, { role } = {}) {
+  const arrival = ARRIVAL_EVIDENCE[role] || ARRIVAL_EVIDENCE.neutral;
   const denied = new Set(Array.isArray(facts.deniedElements) ? facts.deniedElements : []);
   const medium = facts.medium && facts.medium !== "unknown" ? facts.medium : null;
   const expressionType = facts.expressionType && facts.expressionType !== "other" ? facts.expressionType : null;
@@ -71,6 +98,12 @@ export function mapFactsToArticle13(facts = {}) {
       ? ["present", `입력에서 ${MEDIUM_LABELS[medium] || medium}을 확인했습니다.`]
       : ["unclear", "입력에서 전달 수단을 확인하지 못했습니다."];
 
+  const reachedReading = facts.reachedRecipient === "yes"
+    ? ["present", arrival.yes]
+    : facts.reachedRecipient === "no"
+      ? ["absent", arrival.no]
+      : ["unclear", "입력에서 도달 여부를 확인하지 못했습니다."];
+
   const expressionReading = denied.has("expression")
     ? ["absent", "입력에서 그런 표현을 하지 않았다는 언급을 찾았습니다."]
     : expressionType
@@ -86,14 +119,6 @@ export function mapFactsToArticle13(facts = {}) {
 
     element("expression", ...expressionReading),
 
-    element(
-      "reached",
-      facts.reachedRecipient === "yes" ? "present" : facts.reachedRecipient === "no" ? "absent" : "unclear",
-      facts.reachedRecipient === "yes"
-        ? "입력에서 상대방이 내용을 확인했다는 언급을 찾았습니다."
-        : facts.reachedRecipient === "no"
-          ? "입력에서 상대방에게 전달되지 않았다는 언급을 찾았습니다."
-          : "입력에서 도달 여부를 확인하지 못했습니다.",
-    ),
+    element("reached", ...reachedReading),
   ];
 }

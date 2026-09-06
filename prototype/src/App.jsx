@@ -1158,7 +1158,7 @@ export function App() {
       if (token !== analysisTokenRef.current) return;
       setWebCases({ loading: false, ...found });
     });
-    const next = await analyseCase({ redactedText, answers, precedents, allowExternalAi });
+    const next = await analyseCase({ redactedText, answers, role, precedents, allowExternalAi });
     // A new case may have started while this was in flight.
     if (token !== analysisTokenRef.current) return;
     setAnalysisState({ loading: false, ...next });

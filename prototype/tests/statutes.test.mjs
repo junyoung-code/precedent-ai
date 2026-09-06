@@ -114,3 +114,31 @@ test("reports a denied medium or expression as denied rather than as mentioned",
     assert.doesNotMatch(element.evidence, /확인했습니다/, element.id);
   }
 });
+
+test("reads arrival from the side the reader is on", () => {
+  // 상대방 in the article means whoever the message reached. That is the reader
+  // when the reader received it, so answering a victim with 상대방이 내용을
+  // 확인했다 named the sender as the one who saw it — the same confusion the
+  // intake questions were rewritten to remove, left behind in the reading.
+  const arrived = extractFactTags("카카오톡으로 성적인 말을 받았습니다.");
+  const of = (facts, options) => mapFactsToArticle13(facts, options).find((item) => item.id === "reached");
+
+  assert.match(of(arrived, { role: "victim" }).evidence, /회원님/);
+  assert.doesNotMatch(of(arrived, { role: "victim" }).evidence, /상대/);
+
+  assert.match(of(arrived, { role: "reported" }).evidence, /상대/);
+  assert.doesNotMatch(of(arrived, { role: "reported" }).evidence, /회원님/);
+
+  // No side chosen names neither of them rather than guessing one.
+  for (const options of [undefined, {}, { role: "someone" }]) {
+    const evidence = of(arrived, options).evidence;
+    assert.doesNotMatch(evidence, /회원님|상대/, JSON.stringify(options));
+  }
+
+  // The mention itself is the same reading either way — only who is named moves.
+  for (const role of ["victim", "reported", undefined]) {
+    assert.equal(of(arrived, { role }).mention, "present", String(role));
+  }
+  const denied = extractFactTags("상대가 글을 올렸지만 도달하지 않았습니다.");
+  assert.equal(of(denied, { role: "reported" }).mention, "absent");
+});

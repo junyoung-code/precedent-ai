@@ -840,3 +840,36 @@ test("sends the term the ranking used, so the card can add up to the ring", () =
     hybrid.retrievalScore,
   );
 });
+
+test("POST /api/analysis reads the case from the side the reader is on", async (t) => {
+  let received;
+  const analysisClient = {
+    analyze: async (input) => {
+      received = input;
+      return { analysis: { overview: [], elementNotes: [], precedentNotes: [], nextSteps: [] } };
+    },
+  };
+  const server = analysisServer({ analysisClient });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const { port } = server.address();
+
+  const redactedText = "카카오톡으로 성적인 말을 받았습니다.";
+  const arrivalOf = (result) => result.body.elements.find((item) => item.id === "reached").evidence;
+
+  const victim = await postAnalysis(port, { redactedText, role: "victim", allowExternalAi: true });
+  assert.match(arrivalOf(victim), /회원님/);
+  // The side reaches the model too: the verdicts are already decided, but a
+  // paragraph addressed to the wrong side reads as an accusation to a reader
+  // who is not the one accused.
+  assert.equal(received.role, "victim");
+
+  const reported = await postAnalysis(port, { redactedText, role: "reported", allowExternalAi: true });
+  assert.match(arrivalOf(reported), /상대/);
+  assert.equal(received.role, "reported");
+
+  // An unknown or missing side names neither party and tells the model nothing.
+  const anonymous = await postAnalysis(port, { redactedText, role: "nobody", allowExternalAi: true });
+  assert.doesNotMatch(arrivalOf(anonymous), /회원님|상대/);
+  assert.equal(received.role, null);
+});

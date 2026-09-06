@@ -97,6 +97,11 @@ export async function analyseCase({
   // description and these together, the way the search already does — without
   // them the statute screen answers from the text as it stood before it asked.
   answers = null,
+  // Which side of the event the reader is on. The similar-posts request has
+  // always carried it; this one did not, so the sentences were written without
+  // knowing whether the reader received the messages or is accused of sending
+  // them — and the same paragraph reads very differently to each.
+  role = null,
   precedents = [],
   allowExternalAi = false,
   fetchImpl = fetch,
@@ -110,6 +115,7 @@ export async function analyseCase({
       body: JSON.stringify({
         redactedText,
         answers,
+        role,
         allowExternalAi: allowExternalAi === true,
         // Only what the analysis is allowed to cite travels with the request.
         precedents: precedents.slice(0, 5).map((item) => ({

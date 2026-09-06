@@ -104,3 +104,29 @@ test("reports why an analysis is missing instead of throwing", async () => {
     assert.equal(result.analysis, null);
   }
 });
+
+test("carries the reader's side into the prompt the model reads", async () => {
+  const { buildAnalysisInput } = await import("../server/analysis-client.mjs");
+
+  // The similar-posts request has always carried the side; this one did not, so
+  // the sentences were written without knowing whether the reader received the
+  // messages or is the one accused of sending them.
+  let request;
+  await analyseCase({
+    redactedText: "게임 채팅으로 성적인 욕설을 받았습니다.",
+    role: "reported",
+    allowExternalAi: true,
+    fetchImpl: async (url, options) => {
+      request = JSON.parse(options.body);
+      return new Response(JSON.stringify(BODY), { status: 200 });
+    },
+  });
+  assert.equal(request.role, "reported");
+
+  // And the server puts it where the model can act on it.
+  const prompt = JSON.parse(buildAnalysisInput({
+    statute: null, elements: [], description: "설명", precedents: [], role: "reported",
+  }));
+  assert.equal(prompt["읽는이_입장"], "reported");
+  assert.equal(JSON.parse(buildAnalysisInput({ description: "설명" }))["읽는이_입장"], null);
+});

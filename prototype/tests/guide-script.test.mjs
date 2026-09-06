@@ -142,7 +142,13 @@ test("the article on the guide screen is the article the product reads", () => {
 
 test("the four verdicts are the ones the rules produce, not ones written here", () => {
   const facts = extractFactTags(GUIDE_EXAMPLES.thorough.description);
-  assert.deepEqual(plain(GUIDE_ELEMENTS), plain(mapFactsToArticle13(facts)));
+  // Read from the side the example is written from, the way the product reads
+  // it: the arrival line names the reader or the other party depending on which
+  // of them received the messages.
+  assert.deepEqual(
+    plain(GUIDE_ELEMENTS),
+    plain(mapFactsToArticle13(facts, { role: GUIDE_EXAMPLES.thorough.role })),
+  );
 
   // Reading, not deciding: one element is unclear, and the step says why that
   // is the honest answer rather than a gap.

@@ -65,6 +65,8 @@ const INSTRUCTIONS = [
   "'해당합니다', '성립합니다', '충족합니다', '처벌받습니다' 같은 표현을 쓰지 마세요.",
   "판례 문장은 제공된 사건번호만 인용하고, 목록에 없는 사건번호나 법원명을 만들지 마세요.",
   "nextSteps는 증거 보관·기록 정리·전문가 상담 같은 절차 안내만 담고 법적 결론을 담지 마세요.",
+  "읽는이_입장이 victim이면 회원님이 그 내용을 받은 쪽이고, reported면 회원님이 신고를 당했거나 당할까 걱정하는 쪽입니다. 회원님을 그 입장에서 부르세요.",
+  "reported인 경우에도 회원님이 그 행위를 했다고 단정하지 말고, 입력에 적힌 내용만 두고 설명하세요.",
 ].join(" ");
 
 const WEB_INSTRUCTIONS = [
@@ -139,8 +141,12 @@ function outputText(payload) {
   return null;
 }
 
-export function buildAnalysisInput({ statute, elements, description, precedents, searchQuery }) {
+export function buildAnalysisInput({ statute, elements, description, precedents, searchQuery, role }) {
   return JSON.stringify({
+    // Which side wrote the description. Nothing about the reading changes with
+    // it — the verdicts arrive already decided — but a sentence addressed to
+    // the wrong side reads as an accusation to the reader who is not accused.
+    읽는이_입장: role || null,
     법조문: statute
       ? { 법령명: statute.lawName, 조문: statute.articleTitle, 본문: statute.body, 시행일: statute.enforcedOn }
       : null,

@@ -162,7 +162,10 @@ export const GUIDE_ELEMENTS = Object.freeze([
     label: "상대방에게 도달",
     statuteQuote: "상대방에게 도달하게 한",
     mention: "present",
-    evidence: "입력에서 상대방이 내용을 확인했다는 언급을 찾았습니다.",
+    // Worded for the side this example is written from. 상대방 in the article
+    // means whoever the message reached, which is the reader here, so naming
+    // 상대방 told a victim that the sender was the one who saw it.
+    evidence: "입력에서 회원님이 그 내용을 확인하셨다는 언급을 찾았습니다.",
   },
 ]);
 

@@ -9,7 +9,7 @@ import { resolveEntitlement } from "./entitlements.mjs";
 import { buildFixtureAnalysis, readAnalysisFixture } from "./offline-mode.mjs";
 import { mapFactsToArticle13 } from "./statute-elements.mjs";
 import { COMMUNICATION_OBSCENITY_ARTICLE, readStatuteArticle } from "./statutes.mjs";
-import { buildIntakeQuestions } from "./intake-questions.mjs";
+import { buildIntakeQuestions, INTAKE_ROLES } from "./intake-questions.mjs";
 import { readCorpusHealth, readModelPrices, readUsageSummary, recordApiUsage } from "./api-usage.mjs";
 import {
   answerIntakeSession,
@@ -79,8 +79,13 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, entitleme
   if (!statute) return { analysis: null, unavailable: "STATUTE_MISSING" };
 
   const precedents = Array.isArray(body.precedents) ? body.precedents.slice(0, 5) : [];
+  // Which side of the same event the reader is on. The intake already asks, and
+  // the questions and the similar posts already use it; the statute reading and
+  // the sentences a model writes did not, so both addressed everyone as though
+  // they had received the messages.
+  const role = INTAKE_ROLES.includes(body.role) ? body.role : null;
   const facts = extractFacts(described);
-  const elements = mapFactsToArticle13(facts);
+  const elements = mapFactsToArticle13(facts, { role });
   const publicElements = elements.map(({ id, label, statuteQuote, mention, evidence }) => ({ id, label, statuteQuote, mention, evidence }));
   const publicStatute = {
     lawName: statute.lawName, articleTitle: statute.articleTitle,
@@ -110,7 +115,7 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, entitleme
   const started = Date.now();
   try {
     const result = await analysisClient.analyze({
-      statute, elements, description: described, precedents,
+      statute, elements, description: described, precedents, role,
     });
     payload = result.analysis;
     await recordApiUsage({
