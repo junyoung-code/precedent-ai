@@ -495,3 +495,20 @@ test("keeps the written procedure outside the gate the AI cards sit behind", () 
   assert.doesNotMatch(appSource, /screen-lead">AI가 쓴 설명입니다/);
   assert.match(appSource, /생성하지 않은 절차 안내가 함께 있습니다/);
 });
+
+test("sets the article beside the reader's own words, and says what it leaves out", () => {
+  const panel = appSource.slice(appSource.indexOf("function StatutePanel"), appSource.indexOf("function AiSummaryPanel"));
+  // Their sentence, marked as theirs. Without it the screen answers with our
+  // summary of what they wrote, which reads as a verdict rather than a
+  // comparison anyone can check.
+  assert.match(panel, /내가 쓴 내용/);
+  assert.match(panel, /element\.quote && \(/);
+  // The one-sentence article does not carry what a reader most wants: whether
+  // a message that never arrived is punishable, and what a conviction brings.
+  assert.match(panel, /notesOn\(element\.id\)/);
+  assert.match(panel, /articleNotes\.map/);
+  // A note is a claim about the law, so it ships with the article it reads.
+  const note = appSource.slice(appSource.indexOf("function ArticleNote"), appSource.indexOf("function StatutePanel"));
+  assert.match(note, /note\.sources\.map/);
+  assert.match(note, /target="_blank"/);
+});

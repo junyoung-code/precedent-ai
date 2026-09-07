@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { articleParameter, parseStatuteArticle, LawOpenDataClient } from "../server/law-open-data.mjs";
-import { ARTICLE_13_ELEMENTS, mapFactsToArticle13 } from "../server/statute-elements.mjs";
+import { validateGroundedAnalysis } from "../server/grounded-analysis.mjs";
+import { ARTICLE_13_ELEMENTS, ARTICLE_13_NOTES, mapFactsToArticle13 } from "../server/statute-elements.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
 
 const ARTICLE_PAYLOAD = {
@@ -141,4 +142,55 @@ test("reads arrival from the side the reader is on", () => {
   }
   const denied = extractFactTags("상대가 글을 올렸지만 도달하지 않았습니다.");
   assert.equal(of(denied, { role: "reported" }).mention, "absent");
+});
+
+test("sets each element beside the reader's own words", () => {
+  const facts = extractFactTags("카톡으로 성적인 메시지가 왔다는데 저는 차단해둬서 못 봤어요.");
+  const mapped = mapFactsToArticle13(facts, { role: "victim" });
+  const of = (id) => mapped.find((item) => item.id === id);
+
+  assert.equal(of("medium").quote, "카톡으로 성적인 메시지가 왔다");
+  assert.equal(of("reached").quote, "저는 차단해둬서 못 봤어요");
+  // Purpose is never read from the description, so it never quotes one.
+  assert.equal(of("purpose").quote, null);
+  // A description with nothing to quote leaves the field empty rather than
+  // filling it with the evidence sentence, which is ours and not theirs.
+  assert.equal(mapFactsToArticle13({}).every((item) => item.quote === null), true);
+});
+
+test("says what the one-sentence article leaves to other articles", () => {
+  // 제13조 is the whole offence in 175 characters. Whether a message that never
+  // arrived is punishable at all, and what a conviction carries beyond the
+  // sentence, are both answered elsewhere in the same act — and both are what
+  // readers of this offence actually come asking.
+  const byId = new Map(ARTICLE_13_NOTES.map((note) => [note.id, note]));
+  assert.ok(byId.has("attempt"));
+  assert.ok(byId.has("registration"));
+
+  // The attempt note hangs off arrival, because that is the element it explains.
+  assert.equal(byId.get("attempt").element, "reached");
+  assert.match(byId.get("attempt").text, /미수를 처벌하는 규정이 없습니다/);
+  assert.match(byId.get("attempt").text, /제15조/);
+  // Registration is about the article as a whole, not one of its elements.
+  assert.equal(byId.get("registration").element, null);
+  assert.match(byId.get("registration").text, /벌금형을 선고받은 사람은 제외/);
+
+  for (const note of ARTICLE_13_NOTES) {
+    assert.ok(note.sources.length > 0, `${note.id} cites nothing`);
+    for (const source of note.sources) {
+      assert.ok(source.url.startsWith("https://www.law.go.kr/"), `${note.id}: ${source.url}`);
+      // Every article the text names has a link to it, the rule the procedure
+      // timeline holds too.
+      for (const article of note.text.match(/제\d+조(?:의\d+)?/g) || []) {
+        assert.ok(
+          note.sources.some((item) => item.label.endsWith(article)) || article === "제13조",
+          `${note.id} names ${article} with nothing to check it against`,
+        );
+      }
+    }
+    // Held to the censor a model's sentences pass, like every other written line.
+    const checked = validateGroundedAnalysis({ overview: [note.text] }, new Set());
+    assert.deepEqual(checked.dropped, [], `${note.id} would be censored`);
+    assert.equal(checked.overview.length, 1, `${note.id} was dropped for length`);
+  }
 });

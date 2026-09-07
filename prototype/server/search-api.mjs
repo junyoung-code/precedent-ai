@@ -7,7 +7,7 @@ import { buildWebSearchQuery, selectWebCases } from "./web-cases.mjs";
 import { readWebCasesWithRefresh } from "./web-case-refresh.mjs";
 import { resolveEntitlement } from "./entitlements.mjs";
 import { buildFixtureAnalysis, readAnalysisFixture } from "./offline-mode.mjs";
-import { mapFactsToArticle13 } from "./statute-elements.mjs";
+import { ARTICLE_13_NOTES, mapFactsToArticle13 } from "./statute-elements.mjs";
 import { COMMUNICATION_OBSCENITY_ARTICLE, readStatuteArticle } from "./statutes.mjs";
 import { buildIntakeQuestions, INTAKE_ROLES } from "./intake-questions.mjs";
 import { readCorpusHealth, readModelPrices, readUsageSummary, recordApiUsage } from "./api-usage.mjs";
@@ -73,7 +73,6 @@ function describedCase(body) {
 async function analyseCase({ pool, body, analysisClient, extractFacts, entitlement = { analysis: true }, offline = false }) {
   const { redactedText, described } = describedCase(body);
   if (!redactedText) throw intakeInputError();
-  if (!analysisClient) return { analysis: null, unavailable: "ANALYSIS_DISABLED" };
 
   const statute = await readStatuteArticle({ pool, ...COMMUNICATION_OBSCENITY_ARTICLE });
   if (!statute) return { analysis: null, unavailable: "STATUTE_MISSING" };
@@ -86,17 +85,27 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, entitleme
   const role = INTAKE_ROLES.includes(body.role) ? body.role : null;
   const facts = extractFacts(described);
   const elements = mapFactsToArticle13(facts, { role });
-  const publicElements = elements.map(({ id, label, statuteQuote, mention, evidence }) => ({ id, label, statuteQuote, mention, evidence }));
+  const publicElements = elements.map(({ id, label, statuteQuote, mention, evidence, quote }) => ({ id, label, statuteQuote, mention, evidence, quote }));
   const publicStatute = {
     lawName: statute.lawName, articleTitle: statute.articleTitle,
     body: statute.body, enforcedOn: statute.enforcedOn, officialUrl: statute.officialUrl,
   };
 
-  // The statute is public law and the four verdicts come from the rules, so
-  // both cost nothing to produce and are shown either way. Only the sentences a
-  // model writes are behind the gate — and they are not written at all.
+  // Declining the external call used to return here before the article had even
+  // been read, so the reader who wants no model involved — the default, since
+  // the box starts unticked — was shown no article, no reading of it and no
+  // quotation of their own words. None of that leaves this server: the article
+  // is public law out of our own database, the four verdicts come from the
+  // rules, and the notes are written once. Only the sentences a model writes
+  // depend on the consent, and those are what the refusal removes.
+  if (!analysisClient) {
+    return { statute: publicStatute, elements: publicElements, notes: ARTICLE_13_NOTES, analysis: null, unavailable: "ANALYSIS_DISABLED" };
+  }
+
+  // The same reasoning for the plan: what costs nothing to produce is shown
+  // either way, and the sentences are not written at all.
   if (!entitlement.analysis) {
-    return { statute: publicStatute, elements: publicElements, analysis: null, unavailable: entitlement.reason };
+    return { statute: publicStatute, elements: publicElements, notes: ARTICLE_13_NOTES, analysis: null, unavailable: entitlement.reason };
   }
 
   // Offline: the same shape, from a response we already paid for once.
@@ -105,6 +114,7 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, entitleme
     return {
       statute: publicStatute,
       elements: publicElements,
+      notes: ARTICLE_13_NOTES,
       analysis: buildFixtureAnalysis(fixture, precedents.map((item) => item.caseNumber).filter(Boolean)),
       fixture: true,
       unavailable: null,
@@ -136,6 +146,7 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, entitleme
   return {
     statute: publicStatute,
     elements: publicElements,
+    notes: ARTICLE_13_NOTES,
     analysis: { overview: checked.overview, elementNotes: checked.elementNotes, precedentNotes: checked.precedentNotes, nextSteps: checked.nextSteps },
     unavailable: null,
   };

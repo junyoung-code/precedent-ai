@@ -627,7 +627,7 @@ const MENTION_LABEL = {
 };
 
 const ANALYSIS_ABSENCE_REASON = {
-  ANALYSIS_DISABLED: "AI 분석에 동의하지 않으셨습니다. 입력 화면에서 'AI 분석 사용'을 체크하면 법조문 정리를 볼 수 있습니다.",
+  ANALYSIS_DISABLED: "AI 분석에 동의하지 않으셨습니다. 위 법조문과 요건 확인은 그대로 보실 수 있고, 입력 화면에서 'AI 분석 사용'을 체크하면 AI가 쓴 설명이 더해집니다.",
   STATUTE_MISSING: "법조문을 아직 내려받지 못했습니다.",
   ANALYSIS_API_UNAVAILABLE: "AI 분석 서버에 연결하지 못했습니다. 위 판례 결과는 그대로 유효합니다.",
   ANALYSIS_RESPONSE_INVALID: "AI 분석 응답을 확인하지 못했습니다. 위 판례 결과는 그대로 유효합니다.",
@@ -700,10 +700,26 @@ function PlanNotice() {
   );
 }
 
+function ArticleNote({ note }) {
+  return (
+    <p className="article-note">
+      <span aria-hidden="true">§</span> {note.text}
+      {note.sources.map((source) => (
+        <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">
+          {source.label} <span aria-hidden="true">↗</span>
+        </a>
+      ))}
+    </p>
+  );
+}
+
 function StatutePanel({ state }) {
   const { statute, elements, analysis } = state;
   if (!statute) return <AnalysisPlaceholder state={state} />;
   const noteFor = (id) => analysis?.elementNotes.find((item) => item.id === id)?.text;
+  const notes = state.notes || [];
+  const articleNotes = notes.filter((note) => !note.element);
+  const notesOn = (id) => notes.filter((note) => note.element === id);
   // The article is public law and the verdicts come from the rules, so both are
   // free to produce and shown either way. Only the explanation is behind a plan.
   const locked = state.unavailable === ANALYSIS_LOCKED_REASON;
@@ -724,7 +740,20 @@ function StatutePanel({ state }) {
               <span className={`element-mention is-${element.mention}`}>{MENTION_LABEL[element.mention]}</span>
             </div>
             <p className="element-quote">“{element.statuteQuote}”</p>
+            {/*
+              The reader's own sentence, set against the clause above it. The
+              screen used to answer with our summary of what they wrote —
+              입력에서 카카오톡을 확인했습니다 — which reads as a verdict handed
+              down rather than a comparison anyone can check.
+            */}
+            {element.quote && (
+              <p className="element-said">
+                <span className="element-said-label">내가 쓴 내용</span>
+                “{element.quote}”
+              </p>
+            )}
             <p className="element-evidence"><span aria-hidden="true">▸</span> {element.evidence}</p>
+            {notesOn(element.id).map((note) => <ArticleNote key={note.id} note={note} />)}
             {locked
               ? <LockedNotes rows={2} />
               : noteFor(element.id) && (
@@ -733,6 +762,8 @@ function StatutePanel({ state }) {
           </li>
         ))}
       </ul>
+
+      {articleNotes.map((note) => <ArticleNote key={note.id} note={note} />)}
 
       <p className="analysis-caution">
         <strong>각 항목은 회원님이 적은 내용에 그 요건이 언급되었는지만 표시한 것입니다.</strong>
@@ -898,7 +929,7 @@ function ResultDeck({ precedents, resultCount, analysisState, webCasesState, rol
     precedents,
     statute: (
       <>
-        <p className="screen-lead">AI가 아래 법조문을 회원님이 적은 내용과 하나씩 맞춰본 것입니다.</p>
+        <p className="screen-lead">아래 법조문을 회원님이 적은 내용과 하나씩 맞춰본 것입니다. 맞춰보는 일은 규칙이 하고, AI 설명은 동의하신 경우에만 각 요건 아래에 덧붙습니다.</p>
         <StatutePanel state={state} />
       </>
     ),

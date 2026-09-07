@@ -142,6 +142,7 @@ export const GUIDE_ELEMENTS = Object.freeze([
     statuteQuote: "자기 또는 다른 사람의 성적 욕망을 유발하거나 만족시킬 목적으로",
     mention: "unclear",
     evidence: "입력만으로는 알 수 없는 요건입니다. 법원이 여러 사정을 종합해 판단합니다.",
+    quote: null,
   },
   {
     id: "medium",
@@ -149,6 +150,7 @@ export const GUIDE_ELEMENTS = Object.freeze([
     statuteQuote: "전화, 우편, 컴퓨터, 그 밖의 통신매체를 통하여",
     mention: "present",
     evidence: "입력에서 게임 채팅을 확인했습니다.",
+    quote: "어제 온라인 게임에서 같은 팀이던 사람과 다투다가",
   },
   {
     id: "expression",
@@ -156,6 +158,7 @@ export const GUIDE_ELEMENTS = Object.freeze([
     statuteQuote: "성적 수치심이나 혐오감을 일으키는 말, 음향, 글, 그림, 영상 또는 물건을",
     mention: "present",
     evidence: "입력에서 성적인 비하·욕설 표현을 확인했습니다.",
+    quote: "게임 채팅으로 「니 ㅇ미가…」 처럼 제 어머니를 성적으로 비하하는 욕설을 여러 번 받았습니다",
   },
   {
     id: "reached",
@@ -166,6 +169,7 @@ export const GUIDE_ELEMENTS = Object.freeze([
     // means whoever the message reached, which is the reader here, so naming
     // 상대방 told a victim that the sender was the one who saw it.
     evidence: "입력에서 회원님이 그 내용을 확인하셨다는 언급을 찾았습니다.",
+    quote: "게임 채팅으로 「니 ㅇ미가…」 처럼 제 어머니를 성적으로 비하하는 욕설을 여러 번 받았습니다",
   },
 ]);
 

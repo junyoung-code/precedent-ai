@@ -873,3 +873,39 @@ test("POST /api/analysis reads the case from the side the reader is on", async (
   assert.doesNotMatch(arrivalOf(anonymous), /회원님|상대/);
   assert.equal(received.role, null);
 });
+
+test("POST /api/analysis shows the article and its reading without the external call", async (t) => {
+  // The consent box starts unticked, so declining is the default. It used to
+  // return before the article had even been read, which left the reader who
+  // wants no model involved with no article, no reading of it, and no
+  // quotation of their own words — none of which leaves this server.
+  let calls = 0;
+  const analysisClient = {
+    analyze: async () => {
+      calls += 1;
+      return { analysis: { overview: ["설명"], elementNotes: [], precedentNotes: [], nextSteps: [] } };
+    },
+  };
+  const server = analysisServer({ analysisClient });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const { port } = server.address();
+
+  const declined = await postAnalysis(port, {
+    redactedText: "카톡으로 성적인 메시지가 왔다는데 저는 차단해둬서 못 봤어요.",
+    role: "victim",
+    allowExternalAi: false,
+  });
+
+  assert.equal(calls, 0, "declining must still call no model");
+  assert.equal(declined.body.analysis, null);
+  assert.equal(declined.body.unavailable, "ANALYSIS_DISABLED");
+
+  // What the refusal may not take away.
+  assert.equal(declined.body.statute.body, STATUTE_ROW.body);
+  assert.equal(declined.body.elements.length, 4);
+  assert.equal(declined.body.elements.find((item) => item.id === "medium").mention, "present");
+  assert.equal(declined.body.elements.find((item) => item.id === "medium").quote, "카톡으로 성적인 메시지가 왔다");
+  assert.ok(declined.body.notes.some((note) => note.id === "attempt"));
+  assert.ok(declined.body.notes.every((note) => note.sources.every((source) => source.url.startsWith("https://www.law.go.kr/"))));
+});

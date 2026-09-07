@@ -612,6 +612,14 @@ button { color: inherit; }
 .element-mention.is-present { background: #e2f0e9; color: #23684a; }
 .element-mention.is-absent { background: #f6e7e0; color: #7d4128; }
 .element-mention.is-unclear { background: #e9ebf3; color: #5b5f72; }
+/* The article is quoted in the product's voice; this is quoted in the
+   reader's, so the two do not read as one paragraph. */
+.element-said { margin: 7px 0 0; padding: 8px 11px; border-left: 2px solid #c3b4a6; border-radius: 0 8px 8px 0; background: #fbf7f3; color: #4a4038; font-size: 12.5px; line-height: 1.7; }
+.element-said-label { display: block; margin-bottom: 3px; color: #8a7a6c; font-size: 9.5px; font-weight: 800; letter-spacing: .04em; }
+.article-note { margin: 9px 0 0; padding: 9px 11px; border-radius: 9px; background: #eef0f7; color: #4a4d5e; font-size: 11.5px; line-height: 1.7; }
+.article-note a { margin-left: 7px; color: #45507a; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.article-note a:hover { text-decoration: underline; }
+
 /* Quoted law — dark, spaced, and marked as a quotation. */
 .element-quote { margin: 11px 0 0 !important; color: #2f3348 !important; font-size: 13.5px !important; line-height: 1.75; }
 /* What this service worked out from the rules. */

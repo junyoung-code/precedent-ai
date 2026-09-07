@@ -216,3 +216,23 @@ test("does not read a denial into a correction or an ordinary complaint", () => 
     assert.deepEqual(extractFactTags(description).deniedElements, [], description);
   }
 });
+
+test("quotes the reader's own clause for each element it can", () => {
+  // The screen answered 입력에서 카카오톡을 확인했습니다 — our summary of what
+  // they wrote, not what they wrote — so there was nothing to compare the
+  // article against.
+  const quotes = extractFactTags("카톡으로 성적인 메시지가 왔다는데 저는 차단해둬서 못 봤어요.").elementQuotes;
+  assert.equal(quotes.medium, "카톡으로 성적인 메시지가 왔다");
+  assert.equal(quotes.reached, "저는 차단해둬서 못 봤어요");
+  // Cut at a clause boundary, so a reader is never shown half a word.
+  for (const quote of Object.values(quotes)) {
+    assert.doesNotMatch(quote, /^[,.]|[,.]$/, quote);
+    assert.ok(quote.trim() === quote, quote);
+  }
+
+  // Their spelling, not the normalized copy the rules match on.
+  assert.match(extractFactTags("트위터 DM으로 성적인 말을 들었습니다.").elementQuotes.medium, /DM/);
+
+  // Nothing to quote is null rather than an invented sentence.
+  assert.equal(extractFactTags("어제 다투다가 심한 말을 들었습니다.").elementQuotes.medium, undefined);
+});

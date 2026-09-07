@@ -29,6 +29,41 @@ export const ARTICLE_13_ELEMENTS = [
   },
 ];
 
+const LAW_BASE = "https://www.law.go.kr/법령";
+const SEX_CRIMES_ACT = "성폭력범죄의 처벌 등에 관한 특례법";
+
+function source(article) {
+  return Object.freeze({
+    label: `${SEX_CRIMES_ACT} ${article}`,
+    url: `${LAW_BASE}/${SEX_CRIMES_ACT.replace(/\s+/g, "")}/${article}`,
+  });
+}
+
+/**
+ * What the article does not say, quoted from the articles that do.
+ *
+ * 제13조 is one sentence and it is the whole offence. What it leaves out is
+ * where readers get lost: whether a message that never landed is punishable at
+ * all, and what a conviction carries beyond the sentence. Both are answered
+ * elsewhere in the same act, and both are read from the article rather than
+ * inferred — the second one is the single thing this offence's readers are
+ * most afraid of, so it may not be paraphrased loosely.
+ */
+export const ARTICLE_13_NOTES = Object.freeze([
+  Object.freeze({
+    id: "attempt",
+    element: "reached",
+    text: "이 죄는 미수를 처벌하는 규정이 없습니다. 미수범 처벌을 정한 제15조가 열거하는 조문 목록에 제13조는 들어 있지 않습니다.",
+    sources: Object.freeze([source("제15조")]),
+  }),
+  Object.freeze({
+    id: "registration",
+    element: null,
+    text: "제42조 제1항은 이 죄로 유죄판결이나 약식명령이 확정된 사람을 신상정보 등록대상자로 정하면서, 제13조의 범죄로 벌금형을 선고받은 사람은 제외한다는 단서를 두고 있습니다.",
+    sources: Object.freeze([source("제42조")]),
+  }),
+]);
+
 const MEDIUM_LABELS = {
   bank_transfer: "송금메모",
   kakao: "카카오톡",
@@ -70,9 +105,11 @@ const ARRIVAL_EVIDENCE = {
   },
 };
 
-function element(id, mention, evidence) {
+function element(id, mention, evidence, quote = null) {
   const definition = ARTICLE_13_ELEMENTS.find((item) => item.id === id);
-  return { ...definition, mention, evidence };
+  // The reader's own words, so the screen sets the clause beside what they
+  // wrote rather than beside our summary of what they wrote.
+  return { ...definition, mention, evidence, quote: quote || null };
 }
 
 /**
@@ -81,6 +118,7 @@ function element(id, mention, evidence) {
  * element between states.
  */
 export function mapFactsToArticle13(facts = {}, { role } = {}) {
+  const quotes = facts.elementQuotes && typeof facts.elementQuotes === "object" ? facts.elementQuotes : {};
   const arrival = ARRIVAL_EVIDENCE[role] || ARRIVAL_EVIDENCE.neutral;
   const denied = new Set(Array.isArray(facts.deniedElements) ? facts.deniedElements : []);
   const medium = facts.medium && facts.medium !== "unknown" ? facts.medium : null;
@@ -115,10 +153,10 @@ export function mapFactsToArticle13(facts = {}, { role } = {}) {
     // infer it from the circumstances as a whole, so this never reads as settled.
     element("purpose", "unclear", "입력만으로는 알 수 없는 요건입니다. 법원이 여러 사정을 종합해 판단합니다."),
 
-    element("medium", ...mediumReading),
+    element("medium", ...mediumReading, quotes.medium),
 
-    element("expression", ...expressionReading),
+    element("expression", ...expressionReading, quotes.expression),
 
-    element("reached", ...reachedReading),
+    element("reached", ...reachedReading, quotes.reached),
   ];
 }

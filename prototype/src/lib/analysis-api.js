@@ -34,7 +34,31 @@ function mapElements(value) {
       statuteQuote: String(item.statuteQuote || ""),
       mention: item.mention,
       evidence: String(item.evidence || ""),
+      // The reader's own sentence, capped. It is quoted back to them, so it is
+      // trimmed rather than reflowed and never allowed to grow into a wall.
+      quote: typeof item.quote === "string" && item.quote.trim()
+        ? item.quote.trim().slice(0, 160)
+        : null,
     }));
+}
+
+/**
+ * What the article leaves to other articles, kept only where it can be checked.
+ *
+ * Same rule the statute itself passes: a note without an official link is a
+ * claim about the law that nothing on the page backs up, so it does not ship.
+ */
+function mapNotes(value) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => ({
+      id: String(item?.id || ""),
+      element: typeof item?.element === "string" ? item.element : null,
+      text: typeof item?.text === "string" ? item.text.trim() : "",
+      sources: (Array.isArray(item?.sources) ? item.sources : [])
+        .filter((source) => typeof source?.url === "string" && source.url.startsWith("https://www.law.go.kr/"))
+        .map((source) => ({ label: String(source.label || ""), url: source.url })),
+    }))
+    .filter((item) => item.id && item.text && item.sources.length > 0);
 }
 
 /**
@@ -130,23 +154,24 @@ export async function analyseCase({
       signal,
     });
   } catch {
-    return { statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_API_UNAVAILABLE" };
+    return { statute: null, elements: [], notes: [], analysis: null, unavailable: "ANALYSIS_API_UNAVAILABLE" };
   }
   if (!response.ok) {
-    return { statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_API_UNAVAILABLE" };
+    return { statute: null, elements: [], notes: [], analysis: null, unavailable: "ANALYSIS_API_UNAVAILABLE" };
   }
 
   let payload;
   try {
     payload = await response.json();
   } catch {
-    return { statute: null, elements: [], analysis: null, unavailable: "ANALYSIS_RESPONSE_INVALID" };
+    return { statute: null, elements: [], notes: [], analysis: null, unavailable: "ANALYSIS_RESPONSE_INVALID" };
   }
 
   const allowed = new Set(precedents.map((item) => item.caseNumber));
   return {
     statute: mapStatute(payload?.statute),
     elements: mapElements(payload?.elements),
+    notes: mapNotes(payload?.notes),
     analysis: payload?.analysis
       ? {
         overview: cleanSentences(payload.analysis.overview, 4),

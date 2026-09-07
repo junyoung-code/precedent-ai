@@ -173,6 +173,61 @@ export function findDenials(description) {
   };
 }
 
+// The words each element can be read from, for quoting the reader back to
+// themselves. Arrival is included even though its terms are not what decide a
+// denial, because the sentence a reader wrote about the message landing is the
+// one they most want to see set against the clause.
+const QUOTABLE_TERMS = [
+  ["medium", MEDIUM_RULES.flatMap(([, words]) => words)],
+  ["expression", [...SEXUAL_SUBJECT_TERMS, ...SEXUAL_SLUR_TERMS, ...IMAGE_TERMS]],
+  ["reached", [...NOT_DELIVERED_TERMS, ...NOT_READ_TERMS, ...DELIVERED_TERMS]],
+];
+
+const MAX_QUOTE = 120;
+
+/**
+ * The reader's own words for each element, cut at their clause.
+ *
+ * The screen used to answer 입력에서 카카오톡을 확인했습니다 — our summary of
+ * what they wrote, not what they wrote. Set against a clause of the article
+ * that reads as a verdict being handed down rather than a comparison being
+ * made. Taken from the description as typed, not the normalized copy, so the
+ * quotation is theirs down to the spelling.
+ */
+export function findElementQuotes(description) {
+  const text = String(description || "");
+  const haystack = text.toLowerCase();
+  const quotes = {};
+
+  for (const [element, terms] of QUOTABLE_TERMS) {
+    let earliest = -1;
+    let width = 0;
+    for (const term of terms) {
+      const at = haystack.indexOf(term.toLowerCase());
+      if (at !== -1 && (earliest === -1 || at < earliest)) {
+        earliest = at;
+        width = term.length;
+      }
+    }
+    if (earliest === -1) continue;
+
+    // From the boundary before the term to the one after it, so the reader sees
+    // a clause of their own rather than a window cut mid-word.
+    const before = text.slice(0, earliest);
+    const boundaries = [...before.matchAll(new RegExp(CLAUSE_BOUNDARY, "g"))];
+    const last = boundaries[boundaries.length - 1];
+    const from = last ? last.index + last[0].length : 0;
+    const rest = text.slice(earliest + width);
+    const end = rest.search(CLAUSE_BOUNDARY);
+    const to = earliest + width + (end === -1 ? rest.length : end);
+
+    const quote = text.slice(from, to).trim();
+    if (quote && quote.length <= MAX_QUOTE) quotes[element] = quote;
+  }
+
+  return quotes;
+}
+
 function includesAny(text, words) {
   return words.some((word) => text.includes(word));
 }
@@ -266,6 +321,10 @@ export function extractFactTags(description, _options = {}) {
     // Read by the statute screen, not by the ranking: a denial says what this
     // description is not about, which is not a fact to match a judgment on.
     deniedElements: denials.elements,
+    // The reader's own sentence for each element, so the screen can set the
+    // article beside what they actually wrote instead of beside our summary
+    // of it. Display only, like the denials.
+    elementQuotes: findElementQuotes(description),
     normalizedText,
     extractionVersion: FACT_TAG_EXTRACTION_VERSION,
   };
