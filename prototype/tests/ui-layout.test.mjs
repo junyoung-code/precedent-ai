@@ -73,3 +73,11 @@ test("keeps the shell's corners round once the result page stops clipping", () =
   const nav = css.slice(css.indexOf("\n.side-navigation {"));
   assert.match(nav.slice(0, nav.indexOf("}")), /border-radius:\s*25px 0 0 25px/);
 });
+
+test("lets a term open on hover as well as on tap", () => {
+  // The button in App.jsx is what makes a term reachable by touch and by
+  // keyboard. Hover is the extra a mouse gets, and it belongs here rather
+  // than in state.
+  assert.match(css, /\.term:hover \.term-note/);
+  assert.match(css, /\.term-word:focus-visible \+ \.term-note/);
+});

@@ -5,6 +5,7 @@ import { abandonIntake, answerIntake, cancelIntake, completeIntake, createIntake
 import { analyseCase, fetchWebCases } from "./lib/analysis-api.js";
 import { WEB_SOURCE_TYPE_LABEL } from "./lib/web-case-vocab.js";
 import { PROCEDURE_CAUTION, PROCEDURE_LEAD, procedureStages } from "./lib/procedure-timeline.js";
+import { glossTokens } from "./lib/glossary.js";
 import {
   GUIDE_ANALYSIS,
   GUIDE_ANSWER_LENGTH,
@@ -703,7 +704,7 @@ function PlanNotice() {
 function ArticleNote({ note }) {
   return (
     <p className="article-note">
-      <span aria-hidden="true">§</span> {note.text}
+      <span aria-hidden="true">§</span> <Glossed text={note.text} />
       {note.sources.map((source) => (
         <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">
           {source.label} <span aria-hidden="true">↗</span>
@@ -726,7 +727,7 @@ function StatutePanel({ state }) {
 
   return (
     <div className="analysis-card">
-      <blockquote className="statute-body">{statute.body}</blockquote>
+      <blockquote className="statute-body"><Glossed text={statute.body} /></blockquote>
       <p className="statute-source">
         {statute.lawName} · {statute.enforcedOn} 시행 ·{" "}
         <a href={statute.officialUrl} target="_blank" rel="noopener noreferrer">조문 원문 <span aria-hidden="true">↗</span></a>
@@ -752,7 +753,7 @@ function StatutePanel({ state }) {
                 “{element.quote}”
               </p>
             )}
-            <p className="element-evidence"><span aria-hidden="true">▸</span> {element.evidence}</p>
+            <p className="element-evidence"><span aria-hidden="true">▸</span> <Glossed text={element.evidence} /></p>
             {notesOn(element.id).map((note) => <ArticleNote key={note.id} note={note} />)}
             {locked
               ? <LockedNotes rows={2} />
@@ -1797,7 +1798,7 @@ function ProcedurePanel({ role }) {
         {stages.map((stage) => (
           <li key={stage.id}>
             <h4>{stage.title}</h4>
-            <p>{stage.body}</p>
+            <p><Glossed text={stage.body} /></p>
             {stage.sources.length > 0 && (
               <p className="procedure-sources">
                 {stage.sources.map((item) => (
@@ -1813,4 +1814,43 @@ function ProcedurePanel({ role }) {
       <p className="source-reminder">{PROCEDURE_CAUTION}</p>
     </div>
   );
+}
+
+/**
+ * One word, explained where it is used.
+ *
+ * A button rather than a hover target. Most of these readers arrive on a
+ * phone, where there is no hover at all, and a span carrying a title attribute
+ * is reachable by neither the keyboard nor reliably by a screen reader. Tapping
+ * opens it, focus opens it, and a mouse still gets it for free.
+ */
+function Term({ entry }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="term">
+      <button
+        type="button"
+        className="term-word"
+        aria-expanded={open}
+        onClick={() => setOpen((was) => !was)}
+      >
+        {entry.term}
+      </button>
+      <span className={`term-note ${open ? "is-open" : ""}`} role="note">
+        {entry.text}
+        {entry.sources.map((source) => (
+          <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">
+            {source.label} <span aria-hidden="true">↗</span>
+          </a>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+/** A line of text with the words worth explaining made openable. */
+function Glossed({ text }) {
+  return glossTokens(text).map((token, index) => (token.entry
+    ? <Term key={`${token.entry.term}-${index}`} entry={token.entry} />
+    : <span key={index}>{token.text}</span>));
 }

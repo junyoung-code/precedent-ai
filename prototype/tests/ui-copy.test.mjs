@@ -512,3 +512,18 @@ test("sets the article beside the reader's own words, and says what it leaves ou
   assert.match(note, /note\.sources\.map/);
   assert.match(note, /target="_blank"/);
 });
+
+test("opens a term by tap and by keyboard, not by hover alone", () => {
+  const term = appSource.slice(appSource.indexOf("function Term("), appSource.indexOf("/** A line of text"));
+  // A button, because most of these readers are holding a phone and a span
+  // carrying a title attribute reaches neither the keyboard nor a reader.
+  assert.match(term, /<button/);
+  assert.match(term, /aria-expanded=\{open\}/);
+  assert.match(term, /onClick=\{\(\) => setOpen/);
+  assert.doesNotMatch(term, /title=/);
+
+
+  // The words are explained where they are used, not in a page of their own.
+  assert.match(appSource, /<Glossed text=\{statute\.body\} \/>/);
+  assert.match(appSource, /<Glossed text=\{note\.text\} \/>/);
+});
