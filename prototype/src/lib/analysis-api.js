@@ -79,6 +79,10 @@ function mapWebCases(value) {
       url: item.url,
       sourceType: item.sourceType,
       quote: item.quote.trim(),
+      // Whether the post says how it turned out. A label on somebody's post,
+      // not a reading of the reader's own case — and never added up across
+      // posts into anything resembling a rate.
+      ending: item.ending === true,
     }))
     // A last check on what arrived, not a second display rule.
     .slice(0, WEB_CASE_DISPLAY_LIMIT);

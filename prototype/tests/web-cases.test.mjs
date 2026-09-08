@@ -280,3 +280,95 @@ test("keeps one copy of the vocabulary the screen and the server share", async (
   // nothing at all.
   assert.ok(WEB_BATCH_SIZE > vocab.WEB_CASE_DISPLAY_LIMIT);
 });
+
+test("does not carry the words of the offence onto the page", () => {
+  // The gallery posts this reads quote, in full, what was said to the writer.
+  // The summary is the model's own sentence rather than a copy, so this is a
+  // backstop — but the reader on the other side of it may be the person those
+  // words were sent to, and showing them back is a different act from
+  // summarising a consultation question.
+  const { cases, dropped } = validateWebCases([
+    { ...ok, quote: "상대가 걸레년이라고 반복해서 보냈다는 글입니다." },
+    ok,
+  ]);
+  assert.deepEqual(cases.map((item) => item.url), [ok.url]);
+  assert.equal(dropped.includes("explicit"), true);
+});
+
+test("keeps the words a neutral summary actually needs", () => {
+  // The rejection list is deliberately narrower than SEXUAL_SLUR_TERMS in
+  // fact-tags.js. That list exists to recognise a complaint, so it holds 성희롱,
+  // 성드립 and 패드립 — rejecting on those would throw away good posts to catch
+  // nothing.
+  const { cases } = validateWebCases([
+    { ...ok, quote: "게임 채팅에서 성드립과 패드립을 들었다는 글입니다." },
+    { ...ok, url: "https://www.lawtalk.co.kr/qna/2", quote: "직장에서 성희롱을 겪었다고 적은 글입니다." },
+  ]);
+  assert.equal(cases.length, 2);
+});
+
+test("reads whether a post has an ending, and refuses to invent one", () => {
+  const [told] = validateWebCases([{ ...ok, ending: true, situation: "hunter_pattern" }]).cases;
+  assert.equal(told.ending, true);
+  assert.equal(told.situation, "hunter_pattern");
+
+  // Anything the batch did not say is not true by omission, and a situation
+  // this file does not know is not passed through under its own name.
+  const [bare] = validateWebCases([{ ...ok, ending: "그렇다", situation: "무언가" }]).cases;
+  assert.equal(bare.ending, false);
+  assert.equal(bare.situation, null);
+});
+
+test("will not give one site the whole panel", () => {
+  // The panel was 87% Lawtalk. That matters because a consultation post stops
+  // at the question, so a reader who got three of them learned what other
+  // people asked and nothing about how any of it went.
+  const cases = [
+    { title: "로톡 1", url: "https://www.lawtalk.co.kr/qna/1", medium: "game_chat", expression: "other", writerRole: "victim" },
+    { title: "로톡 2", url: "https://www.lawtalk.co.kr/qna/2", medium: "game_chat", expression: "other", writerRole: "victim" },
+    { title: "로톡 3", url: "https://www.lawtalk.co.kr/qna/3", medium: "game_chat", expression: "other", writerRole: "victim" },
+    { title: "디시 1", url: "https://gall.dcinside.com/board/view/?id=a&no=1", medium: "game_chat", expression: "other", writerRole: "victim" },
+  ];
+  const picked = selectWebCases({ cases, facts: { medium: "game_chat" } });
+  assert.equal(picked.length, 3);
+  assert.equal(picked.filter((item) => item.url.includes("lawtalk")).length, 2);
+  assert.equal(picked.filter((item) => item.url.includes("dcinside")).length, 1);
+});
+
+test("fills the panel from what is left rather than holding a slot empty", () => {
+  // The gallery yields a third of what it reads, so there will be days with
+  // nothing from it. A slot that could be filled honestly should be.
+  const cases = [
+    { title: "로톡 1", url: "https://www.lawtalk.co.kr/qna/1", medium: "game_chat", expression: "other", writerRole: "victim" },
+    { title: "로톡 2", url: "https://www.lawtalk.co.kr/qna/2", medium: "game_chat", expression: "other", writerRole: "victim" },
+  ];
+  assert.equal(selectWebCases({ cases, facts: { medium: "game_chat" } }).length, 2);
+});
+
+test("puts the post with an ending in front of the one without", () => {
+  const cases = [
+    { title: "질문", url: "https://www.lawtalk.co.kr/qna/1", medium: "game_chat", expression: "other", writerRole: "victim", ending: false },
+    { title: "후기", url: "https://gall.dcinside.com/board/view/?id=a&no=1", medium: "game_chat", expression: "other", writerRole: "victim", ending: true },
+  ];
+  assert.deepEqual(selectWebCases({ cases, facts: { medium: "game_chat" } }).map((item) => item.title), ["후기", "질문"]);
+});
+
+test("sorts the baiting posts toward the reader they are about, and says nothing", () => {
+  // Somebody reported for something said to a stranger online is who those
+  // posts are about. This changes the order and nothing else: no wording
+  // anywhere tells a reader what happened to them.
+  const cases = [
+    { title: "일반 후기", url: "https://gall.dcinside.com/board/view/?id=a&no=1", medium: "game_chat", expression: "other", writerRole: "reported", ending: true, situation: null },
+    { title: "헌터 글", url: "https://gall.dcinside.com/board/view/?id=b&no=2", medium: "game_chat", expression: "other", writerRole: "reported", ending: true, situation: "hunter_pattern" },
+  ];
+  const facts = { medium: "game_chat", relationship: "stranger" };
+  assert.deepEqual(
+    selectWebCases({ cases, facts, role: "reported" }).map((item) => item.title),
+    ["헌터 글", "일반 후기"],
+  );
+  // A reader the pattern is not about is not steered toward it.
+  assert.deepEqual(
+    selectWebCases({ cases, facts: { medium: "game_chat", relationship: "partner_or_ex" }, role: "reported" }).map((item) => item.title),
+    ["일반 후기", "헌터 글"],
+  );
+});

@@ -44,6 +44,22 @@ const PRECEDENT_LOOKALIKE = [
 // different matter — we are copying it onto our page.
 const AFFILIATION = /[가-힣]{2,10}(대학교|대학|고등학교|중학교|초등학교|주식회사|㈜)|주식회사\s*[가-힣A-Za-z]{2,10}/;
 
+/**
+ * Words a summary of somebody else's post must not carry onto this page.
+ *
+ * The posts this now reads are written by people quoting, in full, what was
+ * said to them. The summary is the model's own sentence rather than a copy, so
+ * this is a backstop rather than the first line of defence — but the reader on
+ * the other side of it may be the person those words were sent to, and showing
+ * them back is a different act from summarising a consultation question.
+ *
+ * Narrower than `SEXUAL_SLUR_TERMS` in fact-tags.js on purpose. That list is
+ * built to recognise a complaint, so it holds 성희롱, 성드립 and 패드립 — words a
+ * neutral summary legitimately needs. Rejecting on those would throw away good
+ * posts to catch nothing.
+ */
+const EXPLICIT_IN_QUOTE = /보지|자지|좆|꼬추|씹새|씹년|씹할|젖가슴|젖탱|따먹|걸레년|걸레같|창녀|창년|딸딸이|폰섹|니애미|니애비|느금마|느개비|애미|섹스/;
+
 function isPublicHttpUrl(value) {
   let url;
   try {
@@ -107,6 +123,7 @@ export function validateWebCases(items, { limit = WEB_BATCH_SIZE } = {}) {
     if (!title || !quote || !sourceType || !url) { dropped.push("shape"); continue; }
     if (redactSensitiveText(quote).redactionCount > 0 || AFFILIATION.test(quote)) { dropped.push("identity"); continue; }
     if (PRECEDENT_LOOKALIKE.some((pattern) => pattern.test(quote) || pattern.test(title))) { dropped.push("precedentLookalike"); continue; }
+    if (EXPLICIT_IN_QUOTE.test(quote)) { dropped.push("explicit"); continue; }
 
     const key = `${url.host}${url.pathname}${url.search}`;
     if (seen.has(key)) { dropped.push("duplicate"); continue; }
@@ -122,6 +139,14 @@ export function validateWebCases(items, { limit = WEB_BATCH_SIZE } = {}) {
       medium: typeof item.medium === "string" ? item.medium : "unknown",
       expression: typeof item.expression === "string" ? item.expression : "other",
       writerRole: WEB_WRITER_ROLES.includes(item.writerRole) ? item.writerRole : "unclear",
+      // Whether the post says how it turned out. This describes the post, not
+      // the reader's case, and nothing is allowed to add these up into a rate:
+      // a handful of self-selected posts is not evidence about anybody's odds,
+      // and a screen reading "불송치 60%" would be predicting an outcome.
+      ending: item.ending === true,
+      // Set only for the baiting-for-a-settlement pattern the galleries call a
+      // 통매음 헌터. Used for ordering and never shown or stated.
+      situation: item.situation === "hunter_pattern" ? "hunter_pattern" : null,
     });
     if (cases.length >= limit) break;
   }
@@ -223,8 +248,33 @@ const EXPRESSION_WORDS = {
  * full fact comparison the precedent cards already use, rather than on a
  * model's reading of a sentence.
  */
+/**
+ * Which site a post came from, for the purpose of not showing three of them.
+ *
+ * The host is the honest unit here. Two Lawtalk questions are two Lawtalk
+ * questions whether the panel calls them lawyer_qna or qna.
+ */
+export function webCaseSource(item) {
+  try {
+    return new URL(item.url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+// At most two of the three slots from any one site. The panel was 87% Lawtalk,
+// and the reason that matters is not variety for its own sake: a consultation
+// post stops at the question, so a reader who got three of them learned what
+// other people asked and nothing about how any of it went.
+const MAX_PER_SOURCE = 2;
+
 export function selectWebCases({ cases, facts = {}, role = null, limit = WEB_CASE_DISPLAY_LIMIT } = {}) {
   const readerMedium = facts.medium && facts.medium !== "unknown" ? facts.medium : null;
+  // Not a finding about the reader, and never said to them. Somebody reported
+  // for something said to a stranger online is who the baiting posts are about,
+  // so those posts sort higher for them and lower for everybody else.
+  const strangerOnline = role === "reported"
+    && (facts.relationship === "stranger" || facts.relationship === "online_user");
 
   const scored = (cases || []).map((item, index) => {
     const { factScore, comparableCount } = compareFactTags(facts, {
@@ -235,26 +285,64 @@ export function selectWebCases({ cases, facts = {}, role = null, limit = WEB_CAS
     // tells them apart: a post plainly written from the other side goes last.
     const known = item.writerRole && item.writerRole !== "unclear" && role;
     const roleScore = known ? (item.writerRole === role ? 40 : -40) : 0;
-    return { item, index, score: (comparableCount === 0 ? 0 : factScore) + roleScore };
+    const endingScore = item.ending ? 15 : 0;
+    const situationScore = item.situation === "hunter_pattern" && strangerOnline ? 25 : 0;
+    return {
+      item,
+      index,
+      score: (comparableCount === 0 ? 0 : factScore) + roleScore + endingScore + situationScore,
+    };
   });
 
   scored.sort((left, right) => right.score - left.score || left.index - right.index);
-  return scored
+
+  const taken = new Map();
+  const picked = [];
+  for (const { item } of scored) {
+    if (picked.length >= Math.max(limit, 0)) break;
     // A post about a different medium is not the same situation, whatever else
     // it shares. Padding the list to three with game chat posts for a bank
     // transfer memo case is the web-section version of inventing a precedent,
     // and this service does not do that. Fewer is the honest answer.
-    .filter(({ item }) => !readerMedium
-      || !item.medium
-      || item.medium === "unknown"
-      || item.medium === readerMedium)
-    .slice(0, Math.max(limit, 0))
-    .map(({ item }) => item);
+    if (readerMedium && item.medium && item.medium !== "unknown" && item.medium !== readerMedium) continue;
+
+    // Only sites are rationed. Two posts whose address we could not read are
+    // not "the same site as each other", and treating them as one bucket
+    // silently capped a list that had nothing to do with source at all.
+    const source = webCaseSource(item);
+    if (source) {
+      const used = taken.get(source) || 0;
+      if (used >= MAX_PER_SOURCE) continue;
+      taken.set(source, used + 1);
+    }
+    picked.push(item);
+  }
+  return picked;
 }
 
 export function buildWebSearchQuery(facts = {}) {
   const parts = [MEDIUM_WORDS[facts.medium], EXPRESSION_WORDS[facts.expressionType]].filter(Boolean);
   return [...parts, "통매음", "통신매체이용음란"].join(" ");
+}
+
+/**
+ * The same situation, asked the way a gallery's own search will answer it.
+ *
+ * The query above is written for a model with a web search tool: long, and
+ * carrying every tag, because something on the other end reads it. A site
+ * search matches words. Handing it the full key returned 2 usable posts out of
+ * 24 on one medium and none at all on another, while "통매음 후기" returned six
+ * out of eight — measured, on the real search, before this existed.
+ *
+ * Two queries rather than one because they find different things: 후기 finds
+ * people who wrote up what happened, and 불송치 finds the disposition that
+ * gallery talks about most.
+ */
+export function buildGalleryQueries(queryKey) {
+  const key = String(queryKey || "");
+  const medium = Object.values(MEDIUM_WORDS).find((word) => key.includes(word));
+  const base = medium ? `${medium} 통매음` : "통매음";
+  return [`${base} 후기`, `${base} 불송치`];
 }
 
 // How long a stored batch is considered current. Past this a reader still gets

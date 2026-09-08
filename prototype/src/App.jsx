@@ -807,6 +807,14 @@ function WebCasesPanel({ state }) {
         {webCases.map((item) => (
           <li key={item.url} className="web-case">
             <span className="web-case-type">{WEB_SOURCE_TYPE_LABEL[item.sourceType] || "웹"}</span>
+            {/*
+              Says only that this post reaches an end, which is the thing the
+              consultation questions above it never do. It describes the post,
+              the same way the source label beside it does — it is not a reading
+              of the reader's own case, and the counts behind these are never
+              added up into a rate.
+            */}
+            {item.ending && <span className="web-case-ending">결과 있음</span>}
             <a href={item.url} target="_blank" rel="noopener noreferrer nofollow">
               {item.title} <span aria-hidden="true">↗</span>
             </a>
