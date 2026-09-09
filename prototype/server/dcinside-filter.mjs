@@ -138,12 +138,28 @@ const ENDING_EVENTS = [
   /(?:징역|집행유예|사회봉사|이수명령)\s?\S{0,14}(?:받았|선고|나왔|났|됐|끝)|선고받/,
   /불기소\s?\S{0,6}(?:처분|됐|나왔)|기각\s?\S{0,6}(?:당했|됐|나왔|됨|한다고)/,
   /사건\s?종결|종결\s?처리|공소권\s?없음/,
-  // A person titling their own post 후기 is telling the gallery how it went.
-  // Guarded, because asking for one reads the same to a substring match:
-  // "후기 좀 끓여와라" and "여기 겜매음 후기는 많은데" are a request and an
-  // observation, and both arrived in the first live run of the gallery queries.
-  /후기(?!\s*(?:좀|는|도|가)?\s*(?:알려|써|올려|끓여|많|없|구함|구해|부탁))/,
 ];
+
+/**
+ * 후기 — the word people use for the genre, not for anything that happened.
+ *
+ * Kept apart from the dispositions above because the two are not equally
+ * reliable in a title. "불송치떴고" and "벌금 400 벌써 다냇는데" are statements
+ * of fact wherever they appear; 후기 is a label anybody can put on anything,
+ * and the complainant-side query has to ask by it, because that is what those
+ * writers call their posts. It brought back "일단 첫번째 글 링크 달아놓음" and
+ * "그런건 없고 점메추나 해줘봐" under that title.
+ *
+ * Guarded further, because asking for one reads the same to a substring match:
+ * "후기 좀 끓여와라" and "여기 겜매음 후기는 많은데" are a request and an
+ * observation.
+ */
+const GENRE_MARKER = /후기(?!\s*(?:좀|는|도|가)?\s*(?:알려|써|올려|끓여|많|없|구함|구해|부탁))/;
+
+// How much of an account has to sit under a post that only calls itself a 후기.
+// The dispositions need none of this: "성드립 치긴 했는데 불송치 나옴" is
+// sixteen characters and says everything.
+const MIN_ACCOUNT_LENGTH = 60;
 
 // Where one thought stops, so a disposition can be read together with the
 // ending that governs it. Follows the clause boundary fact-tags.js already uses
@@ -189,9 +205,23 @@ const THIRD_PARTY = /친구(?:는|가|도|랑|한테)|다른\s?사람|남들은|
  * predicting an outcome, which this service does not do.
  */
 export function hasEnding(post) {
-  return clausesOf(`${post?.title || ""}\n${bodyText(post)}`).some((clause) => hits(ENDING_EVENTS, clause) > 0
+  const text = `${post?.title || ""}\n${bodyText(post)}`;
+  const told = clausesOf(text).some((clause) => hits(ENDING_EVENTS, clause) > 0
     && !ASKING.test(clause)
     && !THIRD_PARTY.test(clause));
+  if (told) return true;
+  // Nothing named a disposition, but the post calls itself a 후기 and there is
+  // an account under it. Addresses do not count toward that: the post that
+  // forced this rule cleared an earlier floor on a 90-character gallery URL
+  // alone, and the model summarising it was what noticed — 이 글에는 이전
+  // 게시물로 연결되는 링크만 있으며, 구체적인 내용은 적혀 있지 않다.
+  // Only in the title. A person titles their own post 후기; the word in a body
+  // is almost always about somebody else's — "다른 통매음 유동이 … 고소 후기인데
+  // 처벌 맥였다고 함" and "여기갤에 고소 후기도 올린 새끼도 있고 … 뭐가 진실?"
+  // both arrived once the complainant-side query was added, and both are a
+  // gallery talking about posts rather than being one.
+  if (!GENRE_MARKER.test(String(post?.title || ""))) return false;
+  return bodyText(post).replace(/https?:\/\/\S+/g, "").trim().length >= MIN_ACCOUNT_LENGTH;
 }
 
 /**
@@ -244,10 +274,6 @@ export function screenPost(post) {
   if (isMarketingPost(post)) return { keep: false, reason: "marketing" };
   if (isStatuteRecital(post)) return { keep: false, reason: "recital" };
   if (!hasEnding(post)) return { keep: false, reason: "noEnding" };
-  // Measured with the addresses taken out. A post whose body was "일단 첫번째
-  // 글 링크 달아놓음" plus a 90-character gallery URL cleared the floor on the
-  // URL alone, and the model summarising it said so: 이 글에는 이전 게시물로
-  // 연결되는 링크만 있으며, 구체적인 내용은 적혀 있지 않다.
   const length = `${post.title} ${bodyText(post)}`.replace(/https?:\/\/\S+/g, "").trim().length;
   if (length < MIN_POST_LENGTH) return { keep: false, reason: "thin" };
   return { keep: true, reason: null, ending: true };

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  WEB_BATCH_SIZE, WEB_CASE_DISPLAY_LIMIT, WEB_MEDIUMS, WEB_SOURCE_TYPES, buildWebSearchQuery, selectWebCases, tidyTitle, validateWebCases, verifyWebCases,
+  GALLERY_QUERY_LIMITS, WEB_BATCH_SIZE, WEB_CASE_DISPLAY_LIMIT, WEB_MEDIUMS, WEB_SOURCE_TYPES, buildGalleryQueries, buildWebSearchQuery, selectWebCases, tidyTitle, validateWebCases, verifyWebCases,
 } from "../server/web-cases.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
 import { USER_AGENT } from "../server/robots.mjs";
@@ -371,4 +371,22 @@ test("sorts the baiting posts toward the reader they are about, and says nothing
     selectWebCases({ cases, facts: { medium: "game_chat", relationship: "partner_or_ex" }, role: "reported" }).map((item) => item.title),
     ["일반 후기", "헌터 글"],
   );
+});
+
+test("asks the gallery in the complainant's words too, not only the accused person's", () => {
+  // 후기 and 불송치 are both what somebody who got reported writes — 불송치 is
+  // the outcome they are hoping for. The first real run proved the cost of
+  // asking only that way: all nine posts came back labelled reported, and a
+  // reader on the receiving end saw nothing from the gallery at all.
+  const queries = buildGalleryQueries("카카오톡 성적 욕설 패드립 통매음 통신매체이용음란");
+  assert.equal(queries.length, GALLERY_QUERY_LIMITS.length, "검색어마다 몫이 있어야 합니다");
+  assert.deepEqual(queries.slice(0, 2), ["카카오톡 통매음 후기", "카카오톡 통매음 불송치"]);
+  // No medium on the third: there are far fewer complainant-side posts, and
+  // narrowing by medium as well returned nothing on the live search.
+  assert.equal(queries[2], "통매음 고소 후기");
+});
+
+test("still asks something when the key names no medium it knows", () => {
+  const queries = buildGalleryQueries("통매음 통신매체이용음란");
+  assert.deepEqual(queries.slice(0, 2), ["통매음 후기", "통매음 불송치"]);
 });

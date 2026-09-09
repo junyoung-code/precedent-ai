@@ -177,3 +177,79 @@ test("does not pay for a summary when the gallery brought back nothing", async (
   await refreshWebCaseQuery({ pool, client, queryKey: "q", verify: keepAll, collect: noGallery });
   assert.equal(summarised, 0);
 });
+
+test("gives every gallery query its own share of the batch", async () => {
+  // Filling in query order is what made the batch one-sided: the first two ask
+  // in the accused person's words, and they took every slot before the
+  // complainant-side query was reached. Nine of nine posts came back labelled
+  // reported, so victims saw nothing from the gallery.
+  const asked = [];
+  const pool = { query: async () => ({ rows: [] }) };
+  const client = {
+    model: "m",
+    searchWebCases: async () => ({ webCases: [], usage: null, webSearches: 1 }),
+    summarizeWebPosts: async ({ posts }) => ({
+      webCases: posts.map((post) => ({
+        title: post.title, url: post.url, sourceType: "community",
+        quote: "조사를 받은 뒤 처분을 받았다고 적은 글입니다.",
+        medium: post.medium, expression: post.expression,
+        writerRole: "unclear", ending: true, situation: post.situation,
+      })),
+      usage: null, webSearches: 0,
+    }),
+  };
+  // Every query can offer more than its share; none may take more.
+  const collect = async ({ query }) => {
+    asked.push(query);
+    return {
+      posts: Array.from({ length: 9 }, (unused, index) => ({
+        title: `${query} ${index}`,
+        url: `https://gall.dcinside.com/board/view/?id=a&no=${asked.length}${index}`,
+        gallery: "a",
+        body: "조사 받으러 갔다가 결국 불송치 뜸. 진술만 잘하면 된다고 봄",
+        ending: true,
+      })),
+      dropped: [],
+    };
+  };
+
+  const result = await refreshWebCaseQuery({ pool, client, queryKey: "카카오톡 통매음", collect, verify: keepAll });
+  assert.equal(asked.length, 3, "세 검색어를 모두 물어야 합니다");
+  // The third query's posts are in the batch rather than cut off by the
+  // WEB_BATCH_SIZE slice downstream.
+  const fromThird = result.count > 0 && asked[2];
+  assert.ok(fromThird, "고소인 쪽 검색어가 배치에 들어가야 합니다");
+  assert.equal(result.count, 12, "한 검색어가 배치를 독식했습니다");
+});
+
+test("reports what both model calls cost, not just the search", async () => {
+  // A refresh makes two calls. Reporting only the web search understated a
+  // batch by whatever the summary ran to — 8,443 input tokens the first time it
+  // went out for real.
+  const pool = { query: async () => ({ rows: [] }) };
+  const client = {
+    model: "m",
+    searchWebCases: async () => ({ webCases: [post(1)], usage: { input_tokens: 2_000, output_tokens: 300 }, webSearches: 2 }),
+    summarizeWebPosts: async () => ({ webCases: [], usage: { input_tokens: 8_443, output_tokens: 1_042 }, webSearches: 0 }),
+  };
+  const collect = async () => ({
+    posts: [{ title: "통매음 불송치 후기", url: "https://gall.dcinside.com/board/view/?id=a&no=1", gallery: "a", body: "조사 받고 불송치 떴음 진술 잘하면 됨", ending: true }],
+    dropped: [],
+  });
+  const result = await refreshWebCaseQuery({ pool, client, queryKey: "q", collect, verify: keepAll });
+  assert.deepEqual(result.usage, { input_tokens: 10_443, output_tokens: 1_342 });
+  // Only the search is billed per tool call; the gallery is fetched here and
+  // summarised without a tool.
+  assert.equal(result.webSearches, 2);
+});
+
+test("has no usage to report when nothing was called", async () => {
+  const pool = { query: async () => ({ rows: [] }) };
+  const client = {
+    model: "m",
+    searchWebCases: async () => ({ webCases: [post(1)], usage: null, webSearches: 0 }),
+    summarizeWebPosts: async () => { throw new Error("should not be called"); },
+  };
+  const result = await refreshWebCaseQuery({ pool, client, queryKey: "q", collect: noGallery, verify: keepAll });
+  assert.equal(result.usage, null);
+});

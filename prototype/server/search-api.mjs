@@ -167,7 +167,28 @@ async function readWebCases({ pool, body, analysisClient, extractFacts, readWeb 
   const facts = extractFacts(described);
   const queryKey = buildWebSearchQuery(facts);
   // Passing no client is what stops a stale row from starting a paid refresh.
-  const cached = await readWeb({ pool, client: offline ? null : analysisClient, queryKey });
+  const started = Date.now();
+  const cached = await readWeb({
+    pool,
+    client: offline ? null : analysisClient,
+    queryKey,
+    // A refresh runs behind this response and spends real money doing it: two
+    // model calls, one of them with the web_search tool, which is billed per
+    // call. Until this was wired up none of it reached api_usage, so the only
+    // spending the dashboard could not see was the spending nobody triggered
+    // on purpose. Not awaited, for the same reason the refresh is not.
+    onRefresh: (running) => {
+      void running.then((result) => recordApiUsage({
+        pool,
+        purpose: "web_batch",
+        model: analysisClient.model,
+        usage: result?.usage,
+        webSearches: result?.webSearches,
+        latencyMs: Date.now() - started,
+        ok: result?.ok !== false,
+      })).catch(() => {});
+    },
+  });
   return {
     webCases: selectWebCases({ cases: cached.cases, facts, role: body.role || null }),
     fetchedAt: cached.fetchedAt ? new Date(cached.fetchedAt).toISOString() : null,

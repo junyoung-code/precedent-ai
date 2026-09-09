@@ -334,16 +334,32 @@ export function buildWebSearchQuery(facts = {}) {
  * 24 on one medium and none at all on another, while "통매음 후기" returned six
  * out of eight — measured, on the real search, before this existed.
  *
- * Two queries rather than one because they find different things: 후기 finds
- * people who wrote up what happened, and 불송치 finds the disposition that
- * gallery talks about most.
+ * Three queries, and they are not interchangeable. 후기 finds people who wrote
+ * up what happened and 불송치 finds the disposition that gallery talks about
+ * most — but both are the accused person's vocabulary, and a first run proved
+ * it: all nine posts collected came back labelled `reported`, so a reader who
+ * was on the receiving end saw nothing from here at all.
+ *
+ * The third asks in the complainant's words instead. It carries no medium,
+ * because there are far fewer of those posts and narrowing further returned
+ * nothing — measured on the live search, along with the decision to leave out
+ * 통매음 신고 후기, which was half jokes.
  */
 export function buildGalleryQueries(queryKey) {
   const key = String(queryKey || "");
   const medium = Object.values(MEDIUM_WORDS).find((word) => key.includes(word));
   const base = medium ? `${medium} 통매음` : "통매음";
-  return [`${base} 후기`, `${base} 불송치`];
+  return [`${base} 후기`, `${base} 불송치`, "통매음 고소 후기"];
 }
+
+// How many posts each of those queries may contribute. Without this the batch
+// fills in query order and `summarizeWebPosts` keeps the first WEB_BATCH_SIZE,
+// which means the two accused-side queries fill it and the complainant-side one
+// is cut off — exactly the state this is meant to fix.
+//
+// A side that comes back empty is not topped up from the other. Doing that is
+// how the batch became one-sided in the first place.
+export const GALLERY_QUERY_LIMITS = [4, 4, 4];
 
 // How long a stored batch is considered current. Past this a reader still gets
 // it immediately and a refresh runs behind the response, so nobody waits on a

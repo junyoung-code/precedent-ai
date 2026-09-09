@@ -196,14 +196,55 @@ test("finds the baiting posts by the word the galleries use for it", () => {
   assert.equal(hunterSituation({ title: "통매음 불송치 후기", body: "조사 받고 불송치 뜸" }), false);
 });
 
-test("does not let a long address stand in for a post", () => {
-  // "롤매음 고소 후기 (진행중 2)" cleared the length floor on a 90-character
-  // gallery URL alone. The model summarising it was the one that noticed: 이
-  // 글에는 이전 게시물로 연결되는 링크만 있으며, 구체적인 내용은 적혀 있지 않다.
-  const pointer = {
-    title: "롤매음 고소 후기 (진행중 2)",
-    body: "일단 첫번째 글 링크 달아놓음 https://gall.dcinside.com/mini/board/view/?id=tongtong&no=425344&exception_mode=recommend&page=1",
+test("takes a disposition in a title at its word, but not the word 후기", () => {
+  // The complainant-side query has to ask by 후기 — that is what those writers
+  // call their posts — and it brought back two whose titles promised an ending
+  // and whose bodies did not deliver one. But 후기 names a genre, while
+  // "불송치떴고" and "벌금 400 벌써 다냇는데" state what happened wherever they
+  // appear. Treating the two alike cost two real endings out of nine.
+  assert.equal(hasEnding({
+    title: "모욕죄 피고소인 신분에서 불송치떴고 통매음 고소인신분이다",
+    body: "모욕죄는 2년전쯤 고소당했다가 불송치",
+  }), true);
+  assert.equal(hasEnding({
+    title: "마구샵님 전 통신매체이용음란 벌금 400 벌써 다냇는데",
+    body: "ㅇ왜이렇게 못내세요 ㅋㅋ",
+  }), true);
+
+  // 후기 with nothing underneath it.
+  assert.equal(hasEnding({
+    title: "통매음 고소 후기",
+    body: "그런건 없고 점메추나 해줘봐 벤데타 영상찍기 귀찮노",
+  }), false);
+  // 후기 over an account is the real thing.
+  assert.equal(hasEnding({
+    title: "[[[ 스레드 모욕죄,통매음으로 고소한 후기 ]]]",
+    body: "인터넷 접수 민원실 확인 조사관 배정까지 1달 조금 안걸렸다 조사관이 연락와서 진술하러 오라고 했고 다녀왔다 생각보다 오래 걸린다",
+  }), true);
+});
+
+test("does not let a pointer to another post pass as an account", () => {
+  // Its body is one clause and a 90-character gallery URL. An earlier floor
+  // counted the URL and let it through; the model summarising it was what
+  // noticed — 이 글에는 이전 게시물로 연결되는 링크만 있으며, 구체적인 내용은
+  // 적혀 있지 않다.
+  assert.equal(screenPost({
+    title: "롤매음 고소 후기 ( 진행중 2)",
+    body: "일단 첫번째 글 링크 달아놓음 https://gall.dcinside.com/mini/board/view/?id=tongtong&no=425344&exception_mode=recommend",
     url: "https://gall.dcinside.com/mini/board/view/?id=tongtong&no=9",
-  };
-  assert.equal(screenPost(pointer).reason, "thin");
+  }).keep, false);
+});
+
+test("reads 후기 as a claim about this post, not a mention of somebody else's", () => {
+  // Both of these arrived once the complainant-side query was added, and both
+  // are a gallery talking about posts rather than being one. A person titles
+  // their own post 후기; the word in a body is almost always about another.
+  assert.equal(hasEnding({
+    title: "스타 통매음은 고소 쉽게 됨ㅋㅋ",
+    body: "다른 통매음 유동이 스타1 통매음 고소 후기인데 1달도 안 되어서 특정 되고 처벌 맥였다고 함 배틀태그+스샷+리플레이만 있으면 된다네",
+  }), false);
+  assert.equal(hasEnding({
+    title: "누구는 스타1 고소된다 안된다로 뒤지게 싸우는데 뭐가 진실?",
+    body: "여기갤에 고소 후기도 올린 새끼도 있고 유투브에 스타1 통매음 고소후기 올린 변호사도 있고 고소당했다는 새끼도 있고 뭐가 진실?",
+  }), false);
 });

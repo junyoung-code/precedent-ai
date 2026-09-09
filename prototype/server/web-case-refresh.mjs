@@ -2,6 +2,7 @@ import {
   WEB_BATCH_SIZE,
   WEB_EXPRESSIONS,
   WEB_MEDIUMS,
+  GALLERY_QUERY_LIMITS,
   buildGalleryQueries,
   buildWebSearchQuery,
   readCachedWebCases,
@@ -51,14 +52,24 @@ async function collectGalleryCases({ client, queryKey, collect, tag }) {
     const seen = new Set();
     const posts = [];
     // Asked the gallery's way, not the search tool's — see buildGalleryQueries.
-    // The same post is reachable from both queries, and the galleries also
-    // cross-post it, so the address is what decides whether we have it already.
-    for (const query of buildGalleryQueries(queryKey)) {
-      const found = await collect({ query });
+    // The same post is reachable from more than one query, and the galleries
+    // cross-post it too, so the address decides whether we already have it.
+    //
+    // Each query gets its own share rather than filling in order, because the
+    // order is not neutral: the first two ask in the accused person's words and
+    // would take the whole batch, leaving the complainant-side query cut off by
+    // the WEB_BATCH_SIZE slice downstream.
+    const queries = buildGalleryQueries(queryKey);
+    for (const [index, query] of queries.entries()) {
+      const limit = GALLERY_QUERY_LIMITS[index] ?? GALLERY_QUERY_LIMITS.at(-1);
+      const found = await collect({ query, limit: limit * 2 });
+      let taken = 0;
       for (const post of found.posts) {
+        if (taken >= limit) break;
         if (seen.has(post.url)) continue;
         seen.add(post.url);
         posts.push(post);
+        taken += 1;
       }
     }
     if (posts.length === 0) return { webCases: [], usage: null };
@@ -67,6 +78,30 @@ async function collectGalleryCases({ client, queryKey, collect, tag }) {
   } catch {
     return { webCases: [], usage: null };
   }
+}
+
+/**
+ * Both calls' tokens as one row's worth.
+ *
+ * A refresh makes two model calls — the web search and the gallery summary —
+ * and reporting only the first would understate what a batch costs by however
+ * much the summary ran to, which was 8,443 input tokens the first time it went
+ * out for real. They share a model, so one row is the honest shape.
+ */
+function totalUsage(...usages) {
+  const fields = ["input_tokens", "output_tokens"];
+  const total = {};
+  for (const usage of usages) {
+    if (!usage) continue;
+    for (const field of fields) total[field] = (total[field] || 0) + (Number(usage[field]) || 0);
+    const cached = usage.input_tokens_details?.cached_tokens;
+    if (cached) {
+      total.input_tokens_details = {
+        cached_tokens: (total.input_tokens_details?.cached_tokens || 0) + Number(cached),
+      };
+    }
+  }
+  return Object.keys(total).length > 0 ? total : null;
 }
 
 /**
@@ -112,7 +147,9 @@ export async function refreshWebCaseQuery({
       ok: true,
       stored,
       count: verified.cases.length,
-      usage: searched.usage,
+      usage: totalUsage(searched.usage, gathered.usage),
+      // Only the web search is billed per tool call; the gallery is fetched by
+      // this server and summarised without a tool.
       webSearches: searched.webSearches,
     };
   } catch (error) {
