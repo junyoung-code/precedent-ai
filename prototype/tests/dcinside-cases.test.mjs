@@ -176,3 +176,14 @@ test("asks for nothing at all without a query", async () => {
   assert.deepEqual(result, { posts: [], dropped: ["query"] });
   assert.equal(called, 0);
 });
+
+test("closes up the search page's own highlighting instead of spacing it out", () => {
+  // The search page wraps the matched words in <b>. Turning every tag into a
+  // space split 불송치면 into "불송치 면", and that misspelling was what would
+  // have gone on screen as the post's own title.
+  const html = searchPage([{
+    url: "https://gall.dcinside.com/mgallery/board/view/?id=lawlawlaw&no=1",
+    title: "통매음 <b>불송치</b>면 판검사 임용에 결격사유임?",
+  }]);
+  assert.equal(parseSearchResults(html)[0].title, "통매음 불송치면 판검사 임용에 결격사유임?");
+});

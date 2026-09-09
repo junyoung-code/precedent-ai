@@ -244,7 +244,11 @@ export function screenPost(post) {
   if (isMarketingPost(post)) return { keep: false, reason: "marketing" };
   if (isStatuteRecital(post)) return { keep: false, reason: "recital" };
   if (!hasEnding(post)) return { keep: false, reason: "noEnding" };
-  const length = `${post.title} ${bodyText(post)}`.trim().length;
+  // Measured with the addresses taken out. A post whose body was "일단 첫번째
+  // 글 링크 달아놓음" plus a 90-character gallery URL cleared the floor on the
+  // URL alone, and the model summarising it said so: 이 글에는 이전 게시물로
+  // 연결되는 링크만 있으며, 구체적인 내용은 적혀 있지 않다.
+  const length = `${post.title} ${bodyText(post)}`.replace(/https?:\/\/\S+/g, "").trim().length;
   if (length < MIN_POST_LENGTH) return { keep: false, reason: "thin" };
   return { keep: true, reason: null, ending: true };
 }

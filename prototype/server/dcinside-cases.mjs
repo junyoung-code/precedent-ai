@@ -82,6 +82,11 @@ export function htmlToText(html) {
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<br\s*\/?>/gi, "\n")
+    // Inline formatting closes up rather than opening a gap. The search page
+    // wraps the matched words in <b>, so turning every tag into a space split
+    // "불송치면" into "불송치 면" — and that misspelling is what would have gone
+    // on screen as the post's title.
+    .replace(/<\/?(?:b|strong|em|i|u|span|mark|font)(?:\s[^>]*)?>/gi, "")
     .replace(/<[^>]*>/g, " ")
     .replace(/&[a-z]+;|&#\d+;/gi, (entity) => ENTITIES[entity.toLowerCase()] ?? " ")
     .replace(/[ \t]+/g, " ")

@@ -195,3 +195,15 @@ test("finds the baiting posts by the word the galleries use for it", () => {
   assert.equal(hunterSituation({ title: "통매음 헌터에게 걸렸을때", body: "랜덤채팅에서 라인으로 유도한다" }), true);
   assert.equal(hunterSituation({ title: "통매음 불송치 후기", body: "조사 받고 불송치 뜸" }), false);
 });
+
+test("does not let a long address stand in for a post", () => {
+  // "롤매음 고소 후기 (진행중 2)" cleared the length floor on a 90-character
+  // gallery URL alone. The model summarising it was the one that noticed: 이
+  // 글에는 이전 게시물로 연결되는 링크만 있으며, 구체적인 내용은 적혀 있지 않다.
+  const pointer = {
+    title: "롤매음 고소 후기 (진행중 2)",
+    body: "일단 첫번째 글 링크 달아놓음 https://gall.dcinside.com/mini/board/view/?id=tongtong&no=425344&exception_mode=recommend&page=1",
+    url: "https://gall.dcinside.com/mini/board/view/?id=tongtong&no=9",
+  };
+  assert.equal(screenPost(pointer).reason, "thin");
+});
