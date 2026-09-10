@@ -1,6 +1,6 @@
 import { ARTICLE_13_ELEMENTS } from "./statute-elements.mjs";
 import {
-  WEB_BATCH_SIZE, WEB_EXPRESSIONS, WEB_MEDIUMS, WEB_SOURCE_TYPES, WEB_WRITER_ROLES,
+  GALLERY_BATCH_SIZE, WEB_BATCH_SIZE, WEB_EXPRESSIONS, WEB_MEDIUMS, WEB_SOURCE_TYPES, WEB_WRITER_ROLES,
 } from "./web-cases.mjs";
 
 const DEFAULT_ENDPOINT = "https://api.openai.com/v1/responses";
@@ -144,13 +144,13 @@ function webSummarySchema() {
     properties: {
       summaries: {
         type: "array",
-        maxItems: WEB_BATCH_SIZE,
+        maxItems: GALLERY_BATCH_SIZE,
         items: {
           type: "object",
           additionalProperties: false,
           required: ["번호", "요약", "글쓴이_입장"],
           properties: {
-            번호: { type: "integer", minimum: 0, maximum: WEB_BATCH_SIZE - 1 },
+            번호: { type: "integer", minimum: 0, maximum: GALLERY_BATCH_SIZE - 1 },
             요약: { type: "string", minLength: 1, maxLength: 300 },
             글쓴이_입장: { type: "string", enum: WEB_WRITER_ROLES },
           },
@@ -327,7 +327,7 @@ export class OpenAiAnalysisClient {
    * in full what was said to them.
    */
   async summarizeWebPosts({ posts }) {
-    const items = (Array.isArray(posts) ? posts : []).slice(0, WEB_BATCH_SIZE);
+    const items = (Array.isArray(posts) ? posts : []).slice(0, GALLERY_BATCH_SIZE);
     if (items.length === 0) throw analysisError("WEB_POSTS_REQUIRED", "요약할 글이 필요합니다.");
 
     const payload = await this.request({

@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   COMMON_WEB_SEARCH_KEYS, WEB_SEARCH_KEYS, readWebCasesWithRefresh, refreshWebCaseQuery,
 } from "../server/web-case-refresh.mjs";
-import { WEB_EXPRESSIONS, WEB_MEDIUMS, buildWebSearchQuery } from "../server/web-cases.mjs";
+import { GALLERY_QUERY_LIMITS, WEB_EXPRESSIONS, WEB_MEDIUMS, buildWebSearchQuery } from "../server/web-cases.mjs";
 
 const post = (n) => ({
   title: `통매음 질문 ${n}`, url: `https://www.lawtalk.co.kr/qna/${n}`,
@@ -50,8 +50,8 @@ test("a stored batch goes through the same checks a live search does", async () 
 test("a failed refresh leaves what is already stored", async () => {
   // The refresh runs behind a response that has gone out. It must not be able
   // to replace a good batch with nothing and then look fresh for a day.
-  let wrote = false;
-  const pool = { query: async () => { wrote = true; return { rows: [] }; } };
+  const written = [];
+  const pool = { query: async (sql, values) => { written.push({ sql, values }); return { rows: [] }; } };
 
   const empty = await refreshWebCaseQuery({
     pool, client: { model: "m", searchWebCases: async () => ({ webCases: [] }) }, verify: keepAll,
@@ -66,7 +66,25 @@ test("a failed refresh leaves what is already stored", async () => {
   });
   assert.equal(broken.ok, false);
   assert.equal(broken.code, "ANALYSIS_API_UNAVAILABLE");
-  assert.equal(wrote, false);
+  // Nothing overwrote the cases. The empty round does touch the row's clock —
+  // see the next test for why — but it never carries a batch with it.
+  assert.equal(written.some(({ sql }) => sql.includes("cases = EXCLUDED.cases")), false);
+});
+
+test("an empty refresh moves the clock so it cannot be asked again immediately", async () => {
+  // Not writing the empty batch is right; not writing anything was a hole. The
+  // row stayed stale, so the next reader started another refresh, and the one
+  // after that — a key that keeps coming back empty bought a web search on
+  // every single request.
+  const written = [];
+  const pool = { query: async (sql, values) => { written.push({ sql, values }); return { rows: [] }; } };
+  await refreshWebCaseQuery({
+    pool, client: { model: "m", searchWebCases: async () => ({ webCases: [] }) },
+    queryKey: "q", verify: keepAll, collect: noGallery,
+  });
+  const touch = written.find(({ sql }) => sql.includes("fetched_at = now()"));
+  assert.ok(touch, "빈 결과인데 시각을 갱신하지 않았습니다");
+  assert.equal(touch.sql.includes("cases = EXCLUDED.cases"), false, "빈 배치가 기존 배치를 덮었습니다");
 });
 
 test("hands back a stale batch at once and refreshes behind it", async () => {
@@ -202,7 +220,7 @@ test("gives every gallery query its own share of the batch", async () => {
   const collect = async ({ query }) => {
     asked.push(query);
     return {
-      posts: Array.from({ length: 9 }, (unused, index) => ({
+      posts: Array.from({ length: GALLERY_QUERY_LIMITS[0] + 5 }, (unused, index) => ({
         title: `${query} ${index}`,
         url: `https://gall.dcinside.com/board/view/?id=a&no=${asked.length}${index}`,
         gallery: "a",
@@ -219,7 +237,10 @@ test("gives every gallery query its own share of the batch", async () => {
   // WEB_BATCH_SIZE slice downstream.
   const fromThird = result.count > 0 && asked[2];
   assert.ok(fromThird, "고소인 쪽 검색어가 배치에 들어가야 합니다");
-  assert.equal(result.count, 12, "한 검색어가 배치를 독식했습니다");
+  // Derived, so raising the pool does not silently break the guarantee this
+  // test exists for: every query contributes, none takes more than its share.
+  const share = GALLERY_QUERY_LIMITS.reduce((sum, n) => sum + n, 0);
+  assert.equal(result.count, share, "한 검색어가 배치를 독식했습니다");
 });
 
 test("reports what both model calls cost, not just the search", async () => {

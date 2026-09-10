@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  GALLERY_QUERY_LIMITS, WEB_BATCH_SIZE, WEB_CASE_DISPLAY_LIMIT, WEB_MEDIUMS, WEB_SOURCE_TYPES, buildGalleryQueries, buildWebSearchQuery, selectWebCases, tidyTitle, validateWebCases, verifyWebCases,
+  DEFAULT_WEB_CACHE_TTL_HOURS, GALLERY_BATCH_SIZE, GALLERY_QUERY_LIMITS, WEB_BATCH_SIZE, WEB_CASE_DISPLAY_LIMIT, WEB_MEDIUMS, WEB_SOURCE_TYPES, buildGalleryQueries, buildWebSearchQuery, readCachedWebCases, webCacheTtlMs, selectWebCases, tidyTitle, validateWebCases, verifyWebCases,
 } from "../server/web-cases.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
 import { USER_AGENT } from "../server/robots.mjs";
@@ -389,4 +389,36 @@ test("asks the gallery in the complainant's words too, not only the accused pers
 test("still asks something when the key names no medium it knows", () => {
   const queries = buildGalleryQueries("통매음 통신매체이용음란");
   assert.deepEqual(queries.slice(0, 2), ["통매음 후기", "통매음 불송치"]);
+});
+
+test("lets the most expensive lever be moved without a redeploy", () => {
+  // A refresh is two model calls, one of them billed per tool call, and the TTL
+  // is what decides how often anybody buys one. At 24 hours across 28 keys that
+  // is up to 28 a day, and somebody browsing their own service to see how it
+  // looks was buying them by opening a page. It was a code constant.
+  assert.equal(webCacheTtlMs({}), DEFAULT_WEB_CACHE_TTL_HOURS * 60 * 60 * 1000);
+  assert.equal(webCacheTtlMs({ WEB_CACHE_TTL_HOURS: "720" }), 720 * 60 * 60 * 1000);
+  // Nonsense falls back rather than disabling the cache or making it eternal.
+  for (const bad of ["", "0", "-5", "abc", undefined]) {
+    assert.equal(webCacheTtlMs({ WEB_CACHE_TTL_HOURS: bad }), DEFAULT_WEB_CACHE_TTL_HOURS * 60 * 60 * 1000);
+  }
+});
+
+test("reads staleness against the ttl it was given", async () => {
+  const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const pool = { query: async () => ({ rows: [{ cases: [], model: "m", fetchedAt: twoDaysAgo }] }) };
+  assert.equal((await readCachedWebCases({ pool, queryKey: "q", ttlMs: 24 * 60 * 60 * 1000 })).stale, true);
+  assert.equal((await readCachedWebCases({ pool, queryKey: "q", ttlMs: 720 * 60 * 60 * 1000 })).stale, false);
+});
+
+test("keeps the paid web search out of the pool that grew", () => {
+  // One constant used to decide how many posts to ask the web search for, where
+  // to cut the gallery's, and how large a stored batch may be. Growing the pool
+  // meant growing the billed search along with it.
+  assert.equal(GALLERY_BATCH_SIZE > WEB_BATCH_SIZE, true, "갤러리 풀이 검색 배치보다 커야 합니다");
+  assert.equal(
+    GALLERY_QUERY_LIMITS.reduce((sum, n) => sum + n, 0) <= GALLERY_BATCH_SIZE,
+    true,
+    "검색어 몫의 합이 요약 상한을 넘으면 뒤쪽 검색어가 잘립니다",
+  );
 });

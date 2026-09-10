@@ -71,7 +71,7 @@
 const num = (n) => Number(n || 0).toLocaleString("ko-KR");
 const won = (n) => n == null ? null : Math.round(n).toLocaleString("ko-KR") + "원";
 const PURPOSE = { search_embedding: "검색 임베딩", case_analysis: "법조문 분석", summary: "판례 요약",
-                  backfill_embedding: "임베딩 백필", other: "기타" };
+                  backfill_embedding: "임베딩 백필", web_batch: "웹 사례 갱신", other: "기타" };
 let days = 30;
 
 function card(title, value, note, unknown) {

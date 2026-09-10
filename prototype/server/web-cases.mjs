@@ -23,6 +23,22 @@ export const WEB_EXPRESSIONS = ["sexual_text", "insult_with_sexual_terms", "sexu
 // the batch is fetched once and narrowed per reader. The fetch schema and the
 // validator have to agree on it, so it lives here and analysis-client imports it.
 export const WEB_BATCH_SIZE = 12;
+
+/**
+ * How many posts the gallery contributes to one batch.
+ *
+ * Separate from WEB_BATCH_SIZE, which was doing three jobs at once: how many
+ * posts to ask the web search for, where to cut the gallery's, and how large a
+ * stored batch may be. Growing the pool meant growing the paid web search along
+ * with it, which was the opposite of the point.
+ *
+ * 30 because the vector needs something to tell apart. Ranking measured over a
+ * 21-post batch put every similarity between 46 and 63 — 20 of those 21 were
+ * game chat, and cosine distance has nothing to say when every post describes
+ * the same situation. Collecting is free; only the summary scales, linearly, at
+ * roughly one analysis call per key.
+ */
+export const GALLERY_BATCH_SIZE = 30;
 const MAX_BODY = 400_000;
 
 /**
@@ -383,12 +399,32 @@ export function buildGalleryQueries(queryKey) {
 //
 // A side that comes back empty is not topped up from the other. Doing that is
 // how the batch became one-sided in the first place.
-export const GALLERY_QUERY_LIMITS = [4, 4, 4];
+export const GALLERY_QUERY_LIMITS = [10, 10, 10];
 
-// How long a stored batch is considered current. Past this a reader still gets
-// it immediately and a refresh runs behind the response, so nobody waits on a
-// web search and a query is never fetched more than once a day.
-export const WEB_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export const DEFAULT_WEB_CACHE_TTL_HOURS = 24;
+
+/**
+ * How long a stored batch is considered current.
+ *
+ * Past this a reader still gets it immediately and a refresh runs behind the
+ * response, so nobody waits on a web search — but the refresh is the single
+ * most expensive thing this feature does: two model calls, one of them with the
+ * `web_search` tool, which is billed per call. At 24 hours that is once a day
+ * per key, and there are 28 keys.
+ *
+ * Configurable because it was a code constant, and the one lever that actually
+ * governs the bill needed a redeploy to move. Someone browsing their own
+ * service to see how it looks should not be buying a refresh every day they do
+ * it; set this long while testing and warm deliberately with the script.
+ */
+export function webCacheTtlMs(env = process.env) {
+  const hours = Number(env.WEB_CACHE_TTL_HOURS);
+  return (Number.isFinite(hours) && hours > 0 ? hours : DEFAULT_WEB_CACHE_TTL_HOURS) * 60 * 60 * 1000;
+}
+
+// Kept as an export because tests and callers read it. Resolved once at load,
+// which is what the constant did before.
+export const WEB_CACHE_TTL_MS = webCacheTtlMs();
 
 const CACHE_UPSERT_SQL = `INSERT INTO web_case_cache (query_key, cases, model, fetched_at)
  VALUES ($1, $2::jsonb, $3, now())
@@ -397,7 +433,7 @@ const CACHE_UPSERT_SQL = `INSERT INTO web_case_cache (query_key, cases, model, f
    model = EXCLUDED.model,
    fetched_at = now()`;
 
-export async function readCachedWebCases({ pool, queryKey }) {
+export async function readCachedWebCases({ pool, queryKey, ttlMs = WEB_CACHE_TTL_MS }) {
   const { rows } = await pool.query(
     "SELECT cases, model, fetched_at AS \"fetchedAt\" FROM web_case_cache WHERE query_key = $1",
     [String(queryKey)],
@@ -408,15 +444,29 @@ export async function readCachedWebCases({ pool, queryKey }) {
     cases: Array.isArray(rows[0].cases) ? rows[0].cases : [],
     model: rows[0].model,
     fetchedAt,
-    stale: Date.now() - fetchedAt.getTime() > WEB_CACHE_TTL_MS,
+    stale: Date.now() - fetchedAt.getTime() > ttlMs,
   };
 }
+
+// Moves the clock without touching what is stored. Used when a refresh came
+// back with nothing: the old batch stays, but the attempt counts.
+const CACHE_TOUCH_SQL = `INSERT INTO web_case_cache (query_key, cases, model, fetched_at)
+ VALUES ($1, '[]'::jsonb, $2, now())
+ ON CONFLICT (query_key) DO UPDATE SET fetched_at = now()`;
 
 export async function writeCachedWebCases({ pool, queryKey, cases, model }) {
   // A search that came back with nothing is not a result worth keeping: writing
   // it would replace a good batch with an empty one and then look fresh for a
   // day. Leaving the old row alone means a reader keeps seeing what worked.
-  if (!Array.isArray(cases) || cases.length === 0) return false;
+  //
+  // But leaving the timestamp alone too was a hole. The row stayed stale, so
+  // the next reader started another refresh, and the one after that — a key
+  // that keeps coming back empty bought a web search on every single request.
+  // The batch is still not overwritten; only the clock moves.
+  if (!Array.isArray(cases) || cases.length === 0) {
+    await pool.query(CACHE_TOUCH_SQL, [String(queryKey), String(model || "")]);
+    return false;
+  }
   await pool.query(CACHE_UPSERT_SQL, [String(queryKey), JSON.stringify(cases), String(model || "")]);
   return true;
 }

@@ -1,4 +1,5 @@
 import {
+  GALLERY_BATCH_SIZE,
   WEB_BATCH_SIZE,
   WEB_EXPRESSIONS,
   WEB_MEDIUMS,
@@ -154,7 +155,13 @@ export async function refreshWebCaseQuery({
     // The same two checks a live search runs. A cached link is one we will show
     // for a day, so it earns no shortcut around them — and a post this server
     // fetched itself goes through exactly the same door as one a model named.
-    const shaped = validateWebCases([...searched.webCases, ...gathered.webCases], { limit: WEB_BATCH_SIZE * 2 });
+    // Room for both sources in full. The old cap was WEB_BATCH_SIZE * 2, which
+    // was two lots of the web search's size and had nothing to do with how many
+    // the gallery now brings.
+    const shaped = validateWebCases(
+      [...searched.webCases, ...gathered.webCases],
+      { limit: WEB_BATCH_SIZE + GALLERY_BATCH_SIZE },
+    );
     const verified = shaped.cases.length > 0 ? await verify({ cases: shaped.cases }) : { cases: [] };
     const stored = await writeCachedWebCases({
       pool, queryKey, cases: verified.cases, model: client.model,
