@@ -1,21 +1,34 @@
 {
   "_읽어주세요": "단가는 platform.openai.com/docs/pricing 에서 보고 직접 채우십시오. null인 항목은 대시보드에서 '단가 미설정'으로 표시되고 토큰 수만 나옵니다. 추측한 값을 넣으면 대시보드가 확신에 찬 거짓말을 합니다.",
+  "_확인일": "2026-09-10 요금 페이지 기준. Standard 처리, short context 열. long context(각 모델의 상한 초과)로 넘어가면 입력·출력 단가가 두 배 가까이 되므로, 긴 요청이 늘면 다시 봐야 합니다.",
   "krwPerUsd": 1400,
   "_krwPerUsd": "환율은 가정값입니다. 카드 청구 환율과 다릅니다.",
-  "webSearchPerCall": null,
-  "_webSearchPerCall": "web_search 도구 1회 호출당 USD. API 응답에 안 나오므로 요금 페이지에서 확인해야 합니다.",
+  "webSearchPerCall": 0.01,
+  "_webSearchPerCall": "Web search (all models) $10.00 / 1k calls = 호출당 $0.01. 여기에 더해 검색이 물어온 본문 토큰이 모델 입력 단가로 따로 청구되는데, 그쪽은 usage 의 input_tokens 에 이미 포함되어 옵니다.",
   "models": {
     "text-embedding-3-small": {
       "inputPerMillion": 0.02,
       "outputPerMillion": 0
     },
     "gpt-5.6-terra": {
-      "inputPerMillion": null,
-      "cachedInputPerMillion": null,
-      "outputPerMillion": null
+      "inputPerMillion": 2.0,
+      "cachedInputPerMillion": 0.2,
+      "outputPerMillion": 12.0
     },
-    "gpt-5.6-sol": { "inputPerMillion": null, "cachedInputPerMillion": null, "outputPerMillion": null },
-    "gpt-5.6-luna": { "inputPerMillion": null, "cachedInputPerMillion": null, "outputPerMillion": null },
-    "gpt-5-mini": { "inputPerMillion": null, "cachedInputPerMillion": null, "outputPerMillion": null }
+    "gpt-5.6-sol": {
+      "inputPerMillion": 4.0,
+      "cachedInputPerMillion": 0.4,
+      "outputPerMillion": 20.0
+    },
+    "gpt-5.6-luna": {
+      "inputPerMillion": 0.2,
+      "cachedInputPerMillion": 0.02,
+      "outputPerMillion": 1.2
+    },
+    "gpt-5-mini": {
+      "inputPerMillion": 0.25,
+      "cachedInputPerMillion": 0.025,
+      "outputPerMillion": 2.0
+    }
   }
 }
