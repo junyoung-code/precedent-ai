@@ -13,6 +13,7 @@ import {
 import { collectDcinsideCases } from "./dcinside-cases.mjs";
 import { hunterSituation } from "./dcinside-filter.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
+import { embedWebCases } from "./web-case-embeddings.mjs";
 
 /**
  * Every query the service can ever send to a web search.
@@ -80,6 +81,20 @@ async function collectGalleryCases({ client, queryKey, collect, tag }) {
   }
 }
 
+// Article 13 lists the forms the offence can take — 말, 음향, 글, 그림, 영상,
+// 물건 — and a post that quotes that list trips the image rules on the statute's
+// words rather than on anything that happened to the writer. The precedent side
+// has had this guard since its own tags were first extracted
+// (`precedent-fact-tags.mjs:35-43`); the gallery path went in without it.
+//
+// `isStatuteRecital` already drops posts that are nothing but the statute. This
+// is for the ones that quote a line of it inside a real account.
+const STATUTE_LINE = /제\s?13\s?조[^\n]*|성폭력범죄의?\s?처벌[^\n]*제\s?13[^\n]*|자기\s?또는\s?(?:다른\s?사람|타인)의\s?성적\s?욕망[^\n]*/g;
+
+export function withoutStatuteEnumeration(text) {
+  return String(text || "").replace(STATUTE_LINE, " ");
+}
+
 /**
  * Both calls' tokens as one row's worth.
  *
@@ -115,13 +130,14 @@ function totalUsage(...usages) {
 export async function refreshWebCaseQuery({
   pool, client, queryKey, verify = verifyWebCases,
   collect = collectDcinsideCases, facts = extractFactTags,
+  embeddingClient = null, embed = embedWebCases,
 } = {}) {
   try {
     // The tags the ranking compares on are produced by the same rules that read
     // the reader's own description, so the gallery posts are tagged here rather
     // than asked of a model. Rules do the matching; the model only writes.
     const tag = (post) => {
-      const extracted = facts(`${post.title}\n${post.body}`);
+      const extracted = facts(withoutStatuteEnumeration(`${post.title}\n${post.body}`));
       return {
         ...post,
         medium: extracted.medium,
@@ -143,6 +159,16 @@ export async function refreshWebCaseQuery({
     const stored = await writeCachedWebCases({
       pool, queryKey, cases: verified.cases, model: client.model,
     });
+
+    // After storing, not before: a batch that could not be written is not one
+    // whose vectors are worth buying. Skips anything already embedded, so the
+    // daily refresh pays only for posts it has never seen. No client — offline,
+    // or no consent — means no vectors, and the panel ranks on tags as it did
+    // before any of this existed.
+    if (embeddingClient && verified.cases.length > 0) {
+      await embed({ pool, embeddingClient, cases: verified.cases });
+    }
+
     return {
       ok: true,
       stored,
@@ -164,11 +190,16 @@ export async function refreshWebCaseQuery({
  * a fresher version of something we already have is the cost this cache exists
  * to remove.
  */
-export async function readWebCasesWithRefresh({ pool, client, queryKey, refresh = refreshWebCaseQuery, onRefresh }) {
+export async function readWebCasesWithRefresh({
+  pool, client, queryKey, refresh = refreshWebCaseQuery, onRefresh, embeddingClient = null,
+}) {
   const cached = await readCachedWebCases({ pool, queryKey });
   const needsFetch = client && (!cached || cached.stale);
   if (needsFetch) {
-    const running = refresh({ pool, client, queryKey }).catch(() => ({ ok: false }));
+    // Forwarded rather than left out: a post collected today and embedded
+    // tomorrow is a post that ranks on tags alone for a day, which is the state
+    // the vectors exist to end.
+    const running = refresh({ pool, client, queryKey, embeddingClient }).catch(() => ({ ok: false }));
     if (onRefresh) onRefresh(running);
   }
   return cached || { cases: [], fetchedAt: null, stale: true, model: null };

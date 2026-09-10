@@ -268,7 +268,24 @@ export function webCaseSource(item) {
 // other people asked and nothing about how any of it went.
 const MAX_PER_SOURCE = 2;
 
-export function selectWebCases({ cases, facts = {}, role = null, limit = WEB_CASE_DISPLAY_LIMIT } = {}) {
+/**
+ * How much of the base score each half is worth.
+ *
+ * Carried over from the precedent search, which splits its own base evenly
+ * between the vector and the tags (`search-precedents.mjs:157-188`, 0.45/0.45
+ * with the last 0.1 going to issue tags this side does not store). It is not a
+ * number measured on web cases yet, which is why it is a constant with a name
+ * rather than two literals in an expression.
+ *
+ * The tags are worth keeping in the mix even at a third of a fill rate: when
+ * they do fire on a gallery post they are exact, where the vector is only ever
+ * close.
+ */
+export const SEMANTIC_WEIGHT = 0.5;
+
+export function selectWebCases({
+  cases, facts = {}, role = null, limit = WEB_CASE_DISPLAY_LIMIT, similarity = null,
+} = {}) {
   const readerMedium = facts.medium && facts.medium !== "unknown" ? facts.medium : null;
   // Not a finding about the reader, and never said to them. Somebody reported
   // for something said to a stranger online is who the baiting posts are about,
@@ -287,11 +304,18 @@ export function selectWebCases({ cases, facts = {}, role = null, limit = WEB_CAS
     const roleScore = known ? (item.writerRole === role ? 40 : -40) : 0;
     const endingScore = item.ending ? 15 : 0;
     const situationScore = item.situation === "hunter_pattern" && strangerOnline ? 25 : 0;
-    return {
-      item,
-      index,
-      score: (comparableCount === 0 ? 0 : factScore) + roleScore + endingScore + situationScore,
-    };
+
+    // A post nobody has embedded yet is unknown, not dissimilar, so the tags
+    // carry the whole base rather than the post being scored as distant. That
+    // keeps the panel working unchanged offline, without consent, and on the
+    // day a new post is collected but not yet embedded.
+    const tagScore = comparableCount === 0 ? 0 : factScore;
+    const semantic = similarity?.get(item.url);
+    const base = typeof semantic === "number"
+      ? semantic * SEMANTIC_WEIGHT + tagScore * (1 - SEMANTIC_WEIGHT)
+      : tagScore;
+
+    return { item, index, score: base + roleScore + endingScore + situationScore };
   });
 
   scored.sort((left, right) => right.score - left.score || left.index - right.index);

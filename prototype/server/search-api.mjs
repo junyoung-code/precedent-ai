@@ -5,6 +5,8 @@ import { extractFactTags } from "../src/lib/fact-tags.js";
 import { validateGroundedAnalysis } from "./grounded-analysis.mjs";
 import { buildWebSearchQuery, selectWebCases } from "./web-cases.mjs";
 import { readWebCasesWithRefresh } from "./web-case-refresh.mjs";
+import { readWebCaseSimilarity } from "./web-case-embeddings.mjs";
+import { buildQueryEmbeddingInput } from "./embedding-input.mjs";
 import { resolveEntitlement } from "./entitlements.mjs";
 import { buildFixtureAnalysis, readAnalysisFixture } from "./offline-mode.mjs";
 import { ARTICLE_13_NOTES, mapFactsToArticle13 } from "./statute-elements.mjs";
@@ -155,11 +157,21 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, entitleme
 /**
  * Similar posts, served from the cache rather than fetched per reader.
  *
- * Free and separate from the analysis on purpose: this is a database read, so
- * it lands with the precedent cards instead of behind a model that takes ten
- * seconds, and a reader without a plan still gets it.
+ * Separate from the analysis on purpose: it lands with the precedent cards
+ * instead of behind a model that takes ten seconds, and a reader without a plan
+ * still gets it.
+ *
+ * It is no longer quite free. Reading the batch is still a database read, but
+ * choosing among it now costs one embedding of the reader's own account — about
+ * 140 tokens, against roughly 24,000 for one analysis. That is what buys a
+ * panel belonging to this reader rather than to their situation type; without
+ * it, everyone whose case reduces to the same two tags sees the same three
+ * posts.
  */
-async function readWebCases({ pool, body, analysisClient, extractFacts, readWeb = readWebCasesWithRefresh, offline = false }) {
+async function readWebCases({
+  pool, body, analysisClient, extractFacts, readWeb = readWebCasesWithRefresh,
+  offline = false, embeddingClient = null, readSimilarity = readWebCaseSimilarity,
+}) {
   const { redactedText, described } = describedCase(body);
   if (!redactedText) throw intakeInputError();
   if (body.allowExternalAi !== true) return { webCases: [], fetchedAt: null, unavailable: "ANALYSIS_DISABLED" };
@@ -172,6 +184,7 @@ async function readWebCases({ pool, body, analysisClient, extractFacts, readWeb 
     pool,
     client: offline ? null : analysisClient,
     queryKey,
+    embeddingClient,
     // A refresh runs behind this response and spends real money doing it: two
     // model calls, one of them with the web_search tool, which is billed per
     // call. Until this was wired up none of it reached api_usage, so the only
@@ -189,8 +202,27 @@ async function readWebCases({ pool, body, analysisClient, extractFacts, readWeb 
       })).catch(() => {});
     },
   });
+  // What makes the panel this reader's rather than their situation-type's. The
+  // batch is shared by everyone whose case reduces to the same two tags — that
+  // is what lets it be cached at all — so the only place their own account can
+  // change what they see is here, choosing among posts already collected.
+  //
+  // The description still never leaves as a search query. It becomes a vector,
+  // compared against vectors of posts other people published.
+  let similarity = null;
+  if (embeddingClient && cached.cases.length > 0) {
+    try {
+      const vector = await embeddingClient.embed(buildQueryEmbeddingInput(described));
+      similarity = await readSimilarity({ pool, queryVector: vector, urls: cached.cases.map((item) => item.url) });
+    } catch {
+      // Ranking on tags alone is the behaviour this panel had for its whole
+      // life. It is not worth failing a free request over.
+      similarity = null;
+    }
+  }
+
   return {
-    webCases: selectWebCases({ cases: cached.cases, facts, role: body.role || null }),
+    webCases: selectWebCases({ cases: cached.cases, facts, role: body.role || null, similarity }),
     fetchedAt: cached.fetchedAt ? new Date(cached.fetchedAt).toISOString() : null,
     fixture: offline || undefined,
     unavailable: cached.cases.length === 0 ? "WEB_CASES_EMPTY" : null,
@@ -306,6 +338,12 @@ export function createSearchApiServer({
         const body = await readJson(request);
         return sendJson(response, 200, await readWebCases({
           pool, body, analysisClient, extractFacts, readWeb, offline,
+          // Metered through the same wrapper the precedent search uses, so the
+          // one embedding this costs is written down as search_embedding
+          // without a purpose or a migration of its own.
+          embeddingClient: !offline && body.allowExternalAi === true
+            ? meteredEmbeddingClient({ client: embeddingClient, pool })
+            : null,
         }));
       }
 
