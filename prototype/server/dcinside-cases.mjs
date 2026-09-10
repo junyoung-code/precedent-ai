@@ -33,6 +33,10 @@ const SEARCH_PATH = "/post/sort/accuracy/q/";
 
 const MAX_BODY = 200_000;
 
+// How many refusals in a row mean the gallery has stopped answering rather than
+// these particular posts being unreachable.
+const UNREACHABLE_RUN = 5;
+
 /**
  * Whether we may open this page, refusing when we could not read the rules.
  *
@@ -64,7 +68,13 @@ async function readPage(url, { fetchImpl, timeoutMs }) {
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return (await response.text()).slice(0, MAX_BODY);
+  const body = (await response.text()).slice(0, MAX_BODY);
+  // A gallery that has had enough of us answers 200 with nothing in it. Read as
+  // a page, that is a post with no body, which screens out as "no ending" —
+  // so a rate-limited run looked exactly like a run that found nothing worth
+  // keeping, and would have gone on to pay a model to summarise the emptiness.
+  if (body.length === 0) throw new Error("EMPTY_RESPONSE");
+  return body;
 }
 
 const ENTITIES = { "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'" };
@@ -188,6 +198,13 @@ export async function collectDcinsideCases({
       body = parsePostBody(await readPage(result.url, { fetchImpl, timeoutMs }));
     } catch {
       dropped.push("unreachable");
+      // Enough refusals in a row and it is the gallery talking, not the posts.
+      // Carrying on would spend twenty more requests to be told the same thing,
+      // and hand back a batch that looks merely disappointing.
+      const recent = dropped.slice(-UNREACHABLE_RUN);
+      if (recent.length === UNREACHABLE_RUN && recent.every((reason) => reason === "unreachable")) {
+        return { posts, dropped: [...dropped, "blocked"] };
+      }
       await sleep(delayMs);
       continue;
     }

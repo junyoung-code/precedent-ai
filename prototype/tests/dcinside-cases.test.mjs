@@ -187,3 +187,26 @@ test("closes up the search page's own highlighting instead of spacing it out", (
   }]);
   assert.equal(parseSearchResults(html)[0].title, "통매음 불송치면 판검사 임용에 결격사유임?");
 });
+
+test("knows the difference between a quiet gallery and one that stopped answering", async () => {
+  // Rate-limited, DCInside answers 200 with an empty body. Read as a page that
+  // is a post with no body, which screens out as "no ending" — so a blocked run
+  // looked identical to one that found nothing worth keeping, and would have
+  // gone on to pay a model to summarise the emptiness.
+  clearRobotsCache();
+  const results = Array.from({ length: 20 }, (unused, index) => ({
+    url: `https://gall.dcinside.com/board/view/?id=accusation&no=${index + 1}`,
+    title: `통매음 불송치 후기 ${index + 1}`,
+  }));
+  let opened = 0;
+  const fetchImpl = async (url) => {
+    if (url.endsWith("/robots.txt")) return { ok: true, text: async () => ROBOTS };
+    if (url.startsWith("https://search.dcinside.com/")) return { ok: true, text: async () => searchPage(results) };
+    opened += 1;
+    return { ok: true, text: async () => "" };
+  };
+  const result = await collectDcinsideCases({ query: "통매음", fetchImpl, delayMs: 0 });
+  assert.deepEqual(result.posts, []);
+  assert.equal(result.dropped.at(-1), "blocked", "차단을 알아차리지 못했습니다");
+  assert.equal(opened < results.length, true, "차단된 뒤에도 계속 요청했습니다");
+});
