@@ -3,9 +3,9 @@ import { readFile } from "node:fs/promises";
 import { normalizeSearchQuery, searchPrecedents } from "./search-precedents.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
 import { validateGroundedAnalysis } from "./grounded-analysis.mjs";
-import { buildWebSearchQuery, selectWebCases } from "./web-cases.mjs";
+import { buildWebSearchQuery } from "./web-cases.mjs";
+import { readWebCasePoolStats, searchWebCasePool } from "./web-case-pool.mjs";
 import { readWebCasesWithRefresh } from "./web-case-refresh.mjs";
-import { readWebCaseSimilarity } from "./web-case-embeddings.mjs";
 import { buildQueryEmbeddingInput } from "./embedding-input.mjs";
 import { resolveEntitlement } from "./entitlements.mjs";
 import { buildFixtureAnalysis, readAnalysisFixture } from "./offline-mode.mjs";
@@ -170,13 +170,29 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, entitleme
  */
 async function readWebCases({
   pool, body, analysisClient, extractFacts, readWeb = readWebCasesWithRefresh,
-  offline = false, embeddingClient = null, readSimilarity = readWebCaseSimilarity,
+  offline = false, embeddingClient = null, searchPool = searchWebCasePool,
 }) {
   const { redactedText, described } = describedCase(body);
   if (!redactedText) throw intakeInputError();
-  if (body.allowExternalAi !== true) return { webCases: [], fetchedAt: null, unavailable: "ANALYSIS_DISABLED" };
 
   const facts = extractFacts(described);
+  const role = body.role || null;
+
+  // Without consent this used to answer with nothing at all, because every post
+  // on the panel had been fetched by a model at request time. They are ours now
+  // — collected ahead of time, stored, link-checked — so choosing among them on
+  // the tags reaches no external service and costs nothing. A reader who
+  // declined AI has not declined our own database.
+  if (body.allowExternalAi !== true) {
+    const found = await searchPool({ pool, queryVector: null, facts, role });
+    return {
+      groups: found.groups,
+      matching: found.matching,
+      checkedAt: found.checkedAt,
+      unavailable: found.total === 0 ? "WEB_CASES_EMPTY" : null,
+    };
+  }
+
   const queryKey = buildWebSearchQuery(facts);
   // Passing no client is what stops a stale row from starting a paid refresh.
   const started = Date.now();
@@ -202,30 +218,34 @@ async function readWebCases({
       })).catch(() => {});
     },
   });
-  // What makes the panel this reader's rather than their situation-type's. The
-  // batch is shared by everyone whose case reduces to the same two tags — that
-  // is what lets it be cached at all — so the only place their own account can
-  // change what they see is here, choosing among posts already collected.
+  // What makes the panel this reader's rather than their situation-type's.
   //
   // The description still never leaves as a search query. It becomes a vector,
-  // compared against vectors of posts other people published.
-  let similarity = null;
-  if (embeddingClient && cached.cases.length > 0) {
+  // compared against vectors of posts other people published — and now against
+  // the whole pool rather than one key's batch, which is the point of the pool:
+  // the batch above is a rate limit on refreshing, not a wall around what this
+  // reader is allowed to be matched to.
+  let queryVector = null;
+  if (embeddingClient) {
     try {
-      const vector = await embeddingClient.embed(buildQueryEmbeddingInput(described));
-      similarity = await readSimilarity({ pool, queryVector: vector, urls: cached.cases.map((item) => item.url) });
+      queryVector = await embeddingClient.embed(buildQueryEmbeddingInput(described));
     } catch {
       // Ranking on tags alone is the behaviour this panel had for its whole
       // life. It is not worth failing a free request over.
-      similarity = null;
+      queryVector = null;
     }
   }
 
+  const found = await searchPool({ pool, queryVector, facts, role });
   return {
-    webCases: selectWebCases({ cases: cached.cases, facts, role: body.role || null, similarity }),
-    fetchedAt: cached.fetchedAt ? new Date(cached.fetchedAt).toISOString() : null,
+    groups: found.groups,
+    matching: found.matching,
+    // What the sentence under the list actually claims: that the server opened
+    // each of these addresses. It used to report when the batch was fetched,
+    // which was a different date about a different act.
+    checkedAt: found.checkedAt,
     fixture: offline || undefined,
-    unavailable: cached.cases.length === 0 ? "WEB_CASES_EMPTY" : null,
+    unavailable: found.total === 0 ? "WEB_CASES_EMPTY" : null,
   };
 }
 
@@ -253,6 +273,7 @@ export function createSearchApiServer({
   buildQuestions = buildIntakeQuestions,
   entitlements = resolveEntitlement,
   readWeb = readWebCasesWithRefresh,
+  searchPool = searchWebCasePool,
   // Nothing external is called at all: no model, no embedding, no refresh.
   offline = false,
   // Off unless asked for. It is a window onto spending, not something a
@@ -271,11 +292,15 @@ export function createSearchApiServer({
     }
     if (devDashboard && request.method === "GET" && url.pathname === "/api/dev/usage") {
       const prices = await readModelPrices();
-      const [usage, corpus] = await Promise.all([
+      const [usage, corpus, webPool] = await Promise.all([
         readUsageSummary({ pool, days: url.searchParams.get("days"), prices }),
         readCorpusHealth({ pool }),
+        // The panel draws only on posts whose link has been checked, so a pool
+        // that has grown without a check run is a screen quietly getting
+        // emptier. Nothing about that is visible from the token counts.
+        readWebCasePoolStats({ pool }).catch(() => null),
       ]);
-      return sendJson(response, 200, { ...usage, corpus });
+      return sendJson(response, 200, { ...usage, corpus, webPool });
     }
 
     try {
@@ -337,7 +362,7 @@ export function createSearchApiServer({
       if (request.method === "POST" && url.pathname === "/api/web-cases") {
         const body = await readJson(request);
         return sendJson(response, 200, await readWebCases({
-          pool, body, analysisClient, extractFacts, readWeb, offline,
+          pool, body, analysisClient, extractFacts, readWeb, searchPool, offline,
           // Metered through the same wrapper the precedent search uses, so the
           // one embedding this costs is written down as search_embedding
           // without a purpose or a migration of its own.

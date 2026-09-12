@@ -295,6 +295,25 @@ test("does not carry the words of the offence onto the page", () => {
   assert.equal(dropped.includes("explicit"), true);
 });
 
+test("does not mistake 보지 못하다 and 자지 않다 for the slurs they are spelled like", () => {
+  // Both are ordinary verb stems before a negative, and both were rejecting
+  // clean summaries — a neutral account of somebody who could not read the
+  // complaint beforehand was thrown out for a slur it does not contain. A
+  // dropped item is only ever a count, so this went unnoticed.
+  const clean = [
+    "글쓴이는 고소장을 미리 보지 못해 무슨 말을 했는지 떠올리기 어려웠다고 적었습니다.",
+    "글쓴이는 연락을 받은 뒤 며칠 동안 자지 못했다고 적었습니다.",
+    "글쓴이는 상대의 글을 더 보지 않고 차단했다고 적었습니다.",
+  ].map((quote) => ({ ...ok, url: `https://example.test/${encodeURIComponent(quote.slice(0, 8))}`, quote }));
+
+  const { cases, dropped } = validateWebCases(clean, { limit: clean.length });
+  assert.equal(cases.length, clean.length, `깨끗한 요약이 걸렸습니다: ${dropped.join(", ")}`);
+
+  // The noun still is one, and the other terms are untouched.
+  const caught = validateWebCases([{ ...ok, quote: "상대가 보지 사진을 보냈다는 글입니다." }]);
+  assert.equal(caught.dropped.includes("explicit"), true);
+});
+
 test("keeps the words a neutral summary actually needs", () => {
   // The rejection list is deliberately narrower than SEXUAL_SLUR_TERMS in
   // fact-tags.js. That list exists to recognise a complaint, so it holds 성희롱,

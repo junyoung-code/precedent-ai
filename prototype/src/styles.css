@@ -675,12 +675,39 @@ button { color: inherit; }
 .web-case-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
 .web-case { padding: 14px 16px; border: 1px solid #e8ded3; border-radius: 12px; background: #fff; }
 .web-case-type { display: inline-block; margin-right: 8px; padding: 2px 7px; border-radius: 5px; background: #efe3d7; color: #6b4327; font-size: 10px; font-weight: 800; vertical-align: 2px; }
+/* One colour per kind of site. Twenty links is too many to read the word on
+   each chip, and the distinction that matters most while scanning is whether a
+   post is somebody's own account or a lawyer answering a stranger.
+   지식iN keeps the green it is known by; 커뮤니티 takes blue, far enough from
+   the grey-blue 결과 있음 chip it sits beside to stay a separate signal. */
+.web-case-type.is-qna { background: #dcefdb; color: #2b6a3e; }
+.web-case-type.is-community { background: #d8ecf9; color: #17607f; }
 /* Reads as a sibling of the source chip, because it is one: both say what kind
    of post this is. Deliberately not a success colour — how it turned out for
    somebody else is not good news, it is just an ending. */
 .web-case-ending { display: inline-block; margin-right: 8px; padding: 2px 7px; border-radius: 5px; background: #e4e7ef; color: #45506b; font-size: 10px; font-weight: 800; vertical-align: 2px; }
 .web-case a { color: #3d3a52; font-weight: 700; font-size: 13.5px; line-height: 1.6; }
 .web-case-quote { margin: 9px 0 0 !important; color: #4b4e5c !important; font-size: 12.5px !important; line-height: 1.75 !important; }
+
+/* One kind of post per block. The heading and its count are what tell a reader
+   there is more below without four open lists making them scroll for it. */
+.web-case-group + .web-case-group { margin-top: 26px; padding-top: 22px; border-top: 1px solid #e8ded3; }
+.web-case-group h3 { display: flex; align-items: baseline; flex-wrap: wrap; gap: 9px; margin: 0 0 4px;
+                     font-size: 15px; letter-spacing: -.01em; color: #533a26; }
+.web-case-count { padding: 2px 8px; border-radius: 999px; background: #efe3d7; color: #6b4327; font-size: 10.5px; font-weight: 800; }
+.web-case-note { margin: 0 0 13px !important; color: #82705f !important; font-size: 11.5px !important; line-height: 1.6 !important; }
+.web-case-group h3 + .web-case-list { margin-top: 13px; }
+
+/* Widens the group rather than opening a page. The count above already said how
+   many there are, so this button only has to say how many are still hidden. */
+.web-case-more { margin-top: 11px; padding: 8px 14px; border: 1px solid #e0d2c4; border-radius: 9px;
+                 background: #fff; color: #6b4327; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.web-case-more:hover { background: #fdf6ef; border-color: #d3bfab; }
+.web-case-more:focus-visible { outline: 2px solid #6b4327; outline-offset: 2px; }
+
+/* Fewer is the honest answer, so the empty state is a sentence and not a
+   drawing of an empty box asking to be filled. */
+.web-cases-empty { margin: 0 !important; padding: 18px 2px; color: #6f6a63 !important; font-size: 13px !important; line-height: 1.8 !important; }
 
 /* The shape of what a plan adds. Not a cover over hidden text — the server
    never wrote any — so the blur is a visual cue and nothing is riding on it. */
@@ -725,6 +752,10 @@ button { color: inherit; }
   .deck-arrow, .deck-progress, .screen-step { display: none; }
   .deck-screen[hidden] { display: block !important; }
   .deck-screen { break-inside: avoid; margin-bottom: 22px; animation: none !important; }
+  /* A folded group is the same problem one level down: the posts are in the
+     document, so a saved copy must carry them however the reader left it. */
+  .web-case[hidden] { display: list-item !important; }
+  .web-case-more { display: none !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {

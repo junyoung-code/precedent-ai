@@ -1,0 +1,188 @@
+{
+  "collectedBy": "claude",
+  "collectedOn": "2026-09-12",
+  "note": "1차 수집. 풀의 두 구멍을 메우는 것이 목적: (1) 실제 판례에서 가장 많은 조합인 카카오톡·문자 + 사진이 갤러리에는 거의 없어 로톡 질문글로만 채워져 있었고, (2) 90건 중 피해자 입장 글이 극히 적었다. 모든 글은 열어서 읽고 요약을 직접 썼다. 결말(ending)은 사건이 실제로 끝났다고 적힌 글에만 붙였다 — 송치·고소당함·계정정지는 단계이지 결말이 아니다.",
+  "cases": [
+    {
+      "url": "https://www.lawtalk.co.kr/qna/643095",
+      "title": "카카오톡 오픈채팅 음란물 유포 후 계정 정지, 법적 문제는?",
+      "quote": "글쓴이는 오픈채팅방과 짧은 영상 플랫폼에서 사진과 영상을 보냈다가 계정이 정지되었다고 적었습니다. 플랫폼 쪽에서 고소할 수 있는지, 연락이 온다면 얼마나 걸리는지, 기소유예나 벌금으로 끝날 수 있는지를 묻습니다.",
+      "sourceType": "lawyer_qna",
+      "medium": "kakao",
+      "expression": "sexual_image",
+      "writerRole": "reported",
+      "ending": false
+    },
+    {
+      "url": "https://www.lawtalk.co.kr/qna/272768",
+      "title": "오픈카톡 통매음 성립되나요?",
+      "quote": "글쓴이는 인터넷 게시판에 글을 올린 뒤 응답한 상대와 1:1 대화로 옮겨 사진을 보냈고, 상대가 곧 대화방을 나갔다고 적었습니다. 이후 계정이 정지되었는데 상대가 신고한 것인지 자동 검열인지 알 수 없어, 동의가 있었다는 증거가 없는 점을 걱정합니다.",
+      "sourceType": "lawyer_qna",
+      "medium": "kakao",
+      "expression": "sexual_image",
+      "writerRole": "reported",
+      "ending": false
+    },
+    {
+      "url": "https://www.lawtalk.co.kr/qna/235256",
+      "title": "카톡 오픈채팅 야한사진 처벌 받을 수도 있나요?",
+      "quote": "글쓴이는 오픈채팅에서 사진과 성적인 내용의 글을 보냈고, 상대가 방에서 내보낸 뒤 계정이 영구 정지되었다고 적었습니다. 상대가 신고했는지는 알지 못한 채, 서로 주고받던 대화였다는 점이 참작될 수 있는지 묻습니다.",
+      "sourceType": "lawyer_qna",
+      "medium": "kakao",
+      "expression": "sexual_image",
+      "writerRole": "reported",
+      "ending": false
+    },
+    {
+      "url": "https://www.lawtalk.co.kr/qna/601672",
+      "title": "랜덤채팅 앱에서의 사진 전송 후 협박 상황, 어떻게 대처할까?",
+      "quote": "글쓴이는 사진을 보내달라는 게시글을 보고 신체 사진을 보낸 뒤 오픈채팅 주소를 건넸다고 적었습니다. 30분쯤 뒤 상대가 신고를 접수했다며 이야기를 듣고 절차를 정하겠다고 했고, 글쓴이는 앱과 사진을 지운 상태에서 합의 요구에 어떻게 대응할지 묻습니다.",
+      "sourceType": "lawyer_qna",
+      "medium": "kakao",
+      "expression": "sexual_image",
+      "writerRole": "reported",
+      "ending": false,
+      "situation": "hunter_pattern"
+    },
+    {
+      "url": "https://www.lawtalk.co.kr/qna/550592",
+      "title": "미성년자 랜덤채팅 통매음 신고 가능성과 대처방안",
+      "quote": "글쓴이는 랜덤채팅으로 만난 상대와 성적인 대화를 나눴는데 상대가 자신을 미성년자라고 말했다고 적었습니다. 대화방을 신고하고 계정을 지웠으며, 상대가 갑자기 대화를 끝내고 나간 뒤 어떤 혐의가 문제될 수 있는지 묻습니다.",
+      "sourceType": "lawyer_qna",
+      "medium": "digital_message",
+      "expression": "sexual_text",
+      "writerRole": "reported",
+      "ending": false
+    },
+    {
+      "url": "https://www.lawtalk.co.kr/qna/284686",
+      "title": "모르는 사람이 카톡으로 음란물을 보냈습니다",
+      "quote": "글쓴이는 모르는 사람에게서 카카오톡으로 음란물을 받았다고 적었습니다. 고소가 가능한지, 경찰서에 갈 때 자료를 출력해 가야 하는지, 합의하게 된다면 어느 정도가 적정한지를 묻습니다.",
+      "sourceType": "lawyer_qna",
+      "medium": "kakao",
+      "expression": "sexual_image",
+      "writerRole": "victim",
+      "ending": false
+    },
+    {
+      "url": "https://www.lawtalk.co.kr/qna/557484",
+      "title": "모르는 사람이 보낸 비키니 사진, 고소 가능할까?",
+      "quote": "글쓴이는 모르는 사람이 팬이라며 카카오톡으로 친구 추가를 한 뒤 노출이 있는 사진을 보냈다고 적었습니다. 한 번뿐인 일이었는데도 고소가 되는지, 앞으로 어떻게 해두어야 하는지를 묻습니다.",
+      "sourceType": "lawyer_qna",
+      "medium": "kakao",
+      "expression": "sexual_image",
+      "writerRole": "victim",
+      "ending": false
+    },
+    {
+      "url": "https://www.lawtalk.co.kr/qna/632768",
+      "title": "성적인 문자에 대한 법적 대응 방법은 무엇인가요?",
+      "quote": "글쓴이는 알고 지내던 사람에게서 성적인 내용의 메시지를 반복해서 받았다고 적었습니다. 신고나 접근금지, 고소 중 어떤 방법이 가능한지 묻습니다.",
+      "sourceType": "lawyer_qna",
+      "medium": "kakao",
+      "expression": "sexual_text",
+      "writerRole": "victim",
+      "ending": false
+    },
+    {
+      "url": "https://www.lawtalk.co.kr/qna/511565",
+      "title": "인스타그램에서의 부적절한 DM 신고 가능할까요?",
+      "quote": "글쓴이는 SNS에서 알게 된 상대와 성적인 내용을 주고받은 뒤 차단했는데, 상대가 여러 개의 다른 계정으로 찾아와 지인들에게 알리겠다는 메시지를 보냈다고 적었습니다. 최근 메시지는 저장해 두었다며 신고가 가능한지 묻습니다.",
+      "sourceType": "lawyer_qna",
+      "medium": "digital_message",
+      "expression": "sexual_text",
+      "writerRole": "victim",
+      "ending": false
+    },
+    {
+      "url": "https://www.lawtalk.co.kr/qna/530368",
+      "title": "SNS에서 음란한 사진을 받았을 때 대처 방법",
+      "quote": "글쓴이는 사진을 받는 쪽의 입장에서 세 가지 경우를 묻습니다. 서로 동의하고 주고받은 뒤 신고하겠다는 말을 들은 경우, 상대가 성인이라고 해서 받았는데 아니었던 경우, 그리고 받는 사람이 미리 해둘 수 있는 일이 있는지입니다.",
+      "sourceType": "lawyer_qna",
+      "medium": "sns_mention",
+      "expression": "sexual_image",
+      "writerRole": "unclear",
+      "ending": false
+    },
+    {
+      "url": "https://www.lawtalk.co.kr/qna/569108",
+      "title": "모르는 번호로 성희롱 전화를 받았을 때 대처 방법",
+      "quote": "글쓴이는 모르는 번호로 성적인 내용의 전화를 받았고, 신고하겠다고 말한 뒤 끊었다고 적었습니다. 두 달쯤 지났지만 계속 생각이 나서 지금이라도 신고할 수 있는지 묻습니다.",
+      "sourceType": "lawyer_qna",
+      "medium": "unknown",
+      "expression": "sexual_text",
+      "writerRole": "victim",
+      "ending": false
+    },
+    {
+      "url": "https://www.lawtalk.co.kr/qna/644579",
+      "title": "틱톡 통매음 고소 가능성, 법적 대응 방법은?",
+      "quote": "글쓴이는 짧은 영상 플랫폼에서 성적인 내용의 메시지를 받은 일로 고소가 가능한지 묻습니다. 상대를 특정할 수 있는지와 어떤 자료를 모아두어야 하는지를 함께 물었습니다.",
+      "sourceType": "lawyer_qna",
+      "medium": "digital_message",
+      "expression": "sexual_text",
+      "writerRole": "victim",
+      "ending": false
+    },
+    {
+      "url": "https://gall.dcinside.com/mini/board/view/?id=tongtong&no=359044",
+      "title": "카톡 오픈채팅 성착취대화 후기",
+      "quote": "글쓴이는 오픈채팅에서 나눈 성적인 대화 때문에 사건이 진행됐고, 결국 전과가 남게 되었다고 적었습니다. 장난이라고 생각하고 한 일이었다며 후회와 우울한 심정을 함께 적었습니다.",
+      "sourceType": "community",
+      "medium": "kakao",
+      "expression": "sexual_text",
+      "writerRole": "reported",
+      "ending": true
+    },
+    {
+      "url": "https://gall.dcinside.com/mini/board/view/?id=tongtong&no=384108",
+      "title": "불송치 이의신청하고옴",
+      "quote": "글쓴이는 게임에서 성적인 표현이 섞인 말을 듣고 고소를 진행했으나 불송치 통지를 받았다고 적었습니다. 상대가 게임에 져서 화가 난 상태였다는 것이 불송치 사유에 담겼는데 당시 게임이 끝나지 않았다며, 이의신청을 했다고 밝혔습니다.",
+      "sourceType": "community",
+      "medium": "game_chat",
+      "expression": "insult_with_sexual_terms",
+      "writerRole": "victim",
+      "ending": true
+    },
+    {
+      "url": "https://gall.dcinside.com/mini/board/view/?id=tongtong&no=250444",
+      "title": "겜매음 불송치 후기 남긴다 (장문)",
+      "quote": "글쓴이는 게임 중 말다툼 끝에 팀원에게 심한 말을 했고, 2월에 신고당해 3월에 조사를 받았다고 적었습니다. 상대가 먼저 도발했고 성적인 의도는 없었다고 설명했으며, 이후 불송치 통지를 받았다고 밝혔습니다.",
+      "sourceType": "community",
+      "medium": "game_chat",
+      "expression": "insult_with_sexual_terms",
+      "writerRole": "reported",
+      "ending": true
+    },
+    {
+      "url": "https://gall.dcinside.com/mini/board/view/?id=tongtong&no=364850",
+      "title": "디스코드에서 있다가 통매음을 당했습니다",
+      "quote": "글쓴이는 음성·채팅 프로그램에서 상대에게 성적인 내용을 받았다고 적었습니다. 대화를 캡처해 두었고 상대의 이름과 연락처도 알고 있다며, 고소가 가능한지 묻습니다.",
+      "sourceType": "community",
+      "medium": "game_chat",
+      "expression": "sexual_image",
+      "writerRole": "victim",
+      "ending": false
+    },
+    {
+      "url": "https://gall.dcinside.com/mini/board/view/?id=tongtong&no=394977",
+      "title": "아까 롤매음 신고하러 간다던 통붕이 후기요!",
+      "quote": "글쓴이는 게임에서 들은 욕설을 신고하러 경찰서에 다녀왔다고 적었습니다. 사진과 영상을 자료로 냈고 조서를 쓰는 과정이 생각과 달랐다며, 합의 없이 처벌을 원한다고 밝혔고 두 사람을 조사한 뒤 정해진다는 안내를 받았다고 했습니다.",
+      "sourceType": "community",
+      "medium": "game_chat",
+      "expression": "insult_with_sexual_terms",
+      "writerRole": "victim",
+      "ending": false
+    },
+    {
+      "url": "https://gall.dcinside.com/mini/board/view/?id=tongtong&no=322385",
+      "title": "지금 경찰조사 받고 왔다",
+      "quote": "글쓴이는 게임에서 한 말 때문에 한 시간쯤 조사를 받고 왔다고 적었습니다. 대화 기록과 고소장을 미리 보지 못해 무슨 말을 했는지 떠올리기 어려웠다며, 송치될 것 같다는 말을 듣고 불안하다고 했습니다.",
+      "sourceType": "community",
+      "medium": "game_chat",
+      "expression": "insult_with_sexual_terms",
+      "writerRole": "reported",
+      "ending": false
+    }
+  ]
+}

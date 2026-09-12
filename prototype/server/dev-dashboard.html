@@ -53,6 +53,7 @@
   </div>
 
   <div id="corpus"></div>
+  <div id="webpool"></div>
   <div id="warn"></div>
   <div class="cards" id="cards"></div>
 
@@ -96,6 +97,19 @@ async function load() {
          화면에는 판례가 그대로 나오므로 겉으로는 아무 문제가 없어 보입니다.
          마지막 확인 ${c.newestCheck ? new Date(c.newestCheck).toLocaleString("ko-KR") : "기록 없음"} &middot;
          <code>npm run verify:sources</code> 로 되살립니다.</div>`;
+
+  // The panel shows only link-checked posts, so a pool that grew without a
+  // check run is a screen getting quietly emptier while the token counts,
+  // which is all this page used to show, stay perfectly healthy.
+  const w = data.webPool;
+  document.getElementById("webpool").innerHTML = !w ? "" : w.unchecked > 0
+    ? `<div class="warn"><strong>웹 사례 ${num(w.unchecked)}건이 링크 미확인입니다.</strong>
+         확인 전에는 화면에 나오지 않습니다. 지금 쓸 수 있는 것은 ${num(w.live)}건 /
+         ${num(w.total)}건이고, 임베딩은 ${num(w.embedded)}건입니다.
+         <code>npm run web:verify</code> 로 채웁니다.</div>`
+    : `<div class="warn" style="border-color:#cde0d3;background:#f0f7f2;color:#2f5c44">
+         웹 사례 풀 ${num(w.total)}건 &mdash; 전부 링크 확인됨, 임베딩 ${num(w.embedded)}건,
+         결말이 적힌 글 ${num(w.withEnding)}건, 직접 수집 ${num(w.byClaude)}건.</div>`;
 
   document.getElementById("warn").innerHTML = data.unpricedModels > 0
     ? `<div class="warn"><strong>단가가 설정되지 않은 모델이 ${data.unpricedModels}개 있습니다.</strong>

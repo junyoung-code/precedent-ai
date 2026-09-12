@@ -1,4 +1,4 @@
-import { WEB_CASE_DISPLAY_LIMIT, WEB_SOURCE_TYPES } from "./web-case-vocab.js";
+import { WEB_CASE_POOL_LIMIT, WEB_SOURCE_TYPES } from "./web-case-vocab.js";
 
 const ELEMENT_IDS = new Set(["purpose", "medium", "expression", "reached"]);
 const MENTIONS = new Set(["present", "absent", "unclear"]);
@@ -83,9 +83,36 @@ function mapWebCases(value) {
       // not a reading of the reader's own case — and never added up across
       // posts into anything resembling a rate.
       ending: item.ending === true,
-    }))
-    // A last check on what arrived, not a second display rule.
-    .slice(0, WEB_CASE_DISPLAY_LIMIT);
+    }));
+}
+
+/**
+ * The groups as the screen will draw them.
+ *
+ * There used to be a `.slice(0, 3)` here, quietly enforcing a display rule the
+ * server also enforced. Two places deciding how many posts a reader sees is how
+ * the server grows a pool and the screen keeps showing three of it.
+ *
+ * The whole-panel limit is still checked, because it bounds what a page will
+ * render however the server misbehaves — but it is checked across the groups
+ * rather than inside one, and it drops the tail instead of the group.
+ */
+function mapWebCaseGroups(value) {
+  const groups = [];
+  let shown = 0;
+  for (const group of Array.isArray(value) ? value : []) {
+    if (typeof group?.id !== "string" || typeof group?.title !== "string") continue;
+    const cases = mapWebCases(group.cases).slice(0, Math.max(WEB_CASE_POOL_LIMIT - shown, 0));
+    if (cases.length === 0) continue;
+    shown += cases.length;
+    groups.push({
+      id: group.id,
+      title: group.title.trim(),
+      note: typeof group.note === "string" && group.note.trim() ? group.note.trim() : null,
+      cases,
+    });
+  }
+  return groups;
 }
 
 /**
@@ -106,16 +133,22 @@ export async function fetchWebCases({
       body: JSON.stringify({ redactedText, answers, role, allowExternalAi: allowExternalAi === true }),
       signal,
     });
-    if (!response.ok) return { webCases: [], fetchedAt: null, unavailable: "WEB_CASES_UNAVAILABLE" };
+    if (!response.ok) return { groups: [], checkedAt: null, unavailable: "WEB_CASES_UNAVAILABLE" };
     const payload = await response.json();
     return {
-      webCases: mapWebCases(payload?.webCases),
-      fetchedAt: typeof payload?.fetchedAt === "string" ? payload.fetchedAt : null,
+      groups: mapWebCaseGroups(payload?.groups),
+      // Which kind of matching the reader got. A reader who declined AI is
+      // matched on tags alone, which is coarser, and the screen says so rather
+      // than presenting the two as the same thing.
+      matching: payload?.matching === "semantic" ? "semantic" : "tags",
+      // When the server last opened these addresses — what the line under the
+      // list actually promises.
+      checkedAt: typeof payload?.checkedAt === "string" ? payload.checkedAt : null,
       fixture: payload?.fixture === true,
       unavailable: payload?.unavailable || null,
     };
   } catch {
-    return { webCases: [], fetchedAt: null, unavailable: "WEB_CASES_UNAVAILABLE" };
+    return { groups: [], checkedAt: null, unavailable: "WEB_CASES_UNAVAILABLE" };
   }
 }
 

@@ -30,7 +30,7 @@ test("a stored batch goes through the same checks a live search does", async () 
   // A cached link is one we will show for a day. It earns no shortcut.
   const verified = [];
   const written = [];
-  const pool = { query: async (sql, values) => { written.push(values); return { rows: [] }; } };
+  const pool = { query: async (sql, values) => { written.push({ sql, values }); return { rows: [] }; } };
   const client = {
     model: "test-model",
     searchWebCases: async () => ({
@@ -44,7 +44,32 @@ test("a stored batch goes through the same checks a live search does", async () 
   });
   assert.equal(result.count, 1);
   assert.deepEqual(verified.map((item) => item.url), ["https://www.lawtalk.co.kr/qna/1"]);
-  assert.equal(written.length, 1);
+  assert.equal(written.filter(({ sql }) => sql.includes("INTO web_case_cache")).length, 1);
+});
+
+test("lets what a refresh found join the pool for good", async () => {
+  // The batch is one key's answer and is overwritten tomorrow. The pool is what
+  // the panel reads, and a post paid for once should not have to be found again
+  // because the reader's tags built a different key.
+  const written = [];
+  const pool = { query: async (sql, values) => { written.push({ sql, values }); return { rows: [{ inserted: true }] }; } };
+  await refreshWebCaseQuery({
+    pool, verify: keepAll, collect: noGallery, queryKey: "q",
+    client: {
+      model: "m",
+      searchWebCases: async () => ({ webCases: [post(1)], usage: {}, webSearches: 1 }),
+    },
+  });
+
+  const joined = written.find(({ sql }) => sql.includes("INTO web_cases"));
+  assert.ok(joined, "풀에 넣지 않았습니다");
+  assert.equal(joined.values[0], "https://www.lawtalk.co.kr/qna/1");
+  assert.equal(joined.values[9], "openai_web_search");
+  // Already opened by `verify`, so it is stored live rather than waiting for
+  // the scheduled check to reach it and staying invisible until then.
+  const checked = written.find(({ sql }) => sql.includes("SET link_status"));
+  assert.ok(checked, "링크 확인 결과를 남기지 않았습니다");
+  assert.equal(checked.values[1], 200);
 });
 
 test("a failed refresh leaves what is already stored", async () => {

@@ -9,8 +9,10 @@ import {
   readCachedWebCases,
   validateWebCases,
   verifyWebCases,
+  webCaseSource,
   writeCachedWebCases,
 } from "./web-cases.mjs";
+import { upsertWebCases as joinPool } from "./web-case-pool.mjs";
 import { collectDcinsideCases } from "./dcinside-cases.mjs";
 import { hunterSituation } from "./dcinside-filter.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
@@ -166,6 +168,20 @@ export async function refreshWebCaseQuery({
     const stored = await writeCachedWebCases({
       pool, queryKey, cases: verified.cases, model: client.model,
     });
+
+    // The batch is one key's answer and gets overwritten tomorrow; the pool is
+    // what the panel actually reads, and it only grows. A post found here joins
+    // it permanently, marked with which half of the refresh produced it — the
+    // upsert then refuses to let a later, thinner copy overwrite a better one.
+    //
+    // Already link-checked above, so it is written with that result rather than
+    // waiting for the scheduled check to reach it.
+    for (const [collectedBy, cases] of [
+      ["dcinside", verified.cases.filter((item) => webCaseSource(item).endsWith("dcinside.com"))],
+      ["openai_web_search", verified.cases.filter((item) => !webCaseSource(item).endsWith("dcinside.com"))],
+    ]) {
+      if (cases.length > 0) await joinPool({ pool, cases, collectedBy, linkStatus: 200 });
+    }
 
     // After storing, not before: a batch that could not be written is not one
     // whose vectors are worth buying. Skips anything already embedded, so the

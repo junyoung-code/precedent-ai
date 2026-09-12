@@ -186,12 +186,21 @@ test("marks posts strangers wrote as the least reliable thing on the page", () =
   assert.match(appSource, /위 판례 화면의 기록과는 성격이 완전히 다릅니다/);
   // The warning renders before the list it warns about.
   assert.ok(appSource.indexOf("web-cases-warning") < appSource.indexOf("web-case-list"));
-  // Each link is labelled with where it came from, and opens away from us.
+  // Each link is labelled with where it came from, and opens away from us. The
+  // kind is a class as well as a word so the chips read as colours in a long
+  // list — dropping it would leave every source looking the same again.
   assert.match(appSource, /SOURCE_TYPE_LABEL\[item\.sourceType\]/);
+  assert.match(appSource, /web-case-type is-\$\{item\.sourceType\}/);
   assert.match(appSource, /rel="noopener noreferrer nofollow"/);
   // The service says plainly which half is checked and which half is generated.
-  assert.match(appSource, /서버가 각 주소에 실제로 접속해 존재를 확인한 것만 남겼습니다/);
+  assert.match(appSource, /서버가 각 주소에 실제로 접속해 존재를 확인한 글만 남겼고/);
   assert.match(appSource, /요약은 AI가 쓴 것이므로 원문을 직접 확인하십시오/);
+  // And says which kind of matching produced the list, rather than letting the
+  // coarse one pass for the close one.
+  assert.match(appSource, /매체와 표현 종류만 맞춰 고른 글입니다/);
+  assert.match(appSource, /회원님이 적은 내용과 각 글을 비교해 가까운 순으로 고른 것입니다/);
+  // Fewer is the honest answer. The panel never pads the list to look full.
+  assert.match(appSource, /비슷해 보이는 글을 억지로 채워 보여드리지 않습니다/);
 });
 
 test("keeps the web section from reading as a verdict", () => {
@@ -398,7 +407,7 @@ test("the tour plays on arrival and nothing but the reader stops it", () => {
   assert.equal(appSource.includes("onMouseEnter"), false);
 });
 
-test("the tour walks all three result screens, not just the precedents", () => {
+test("the tour walks all four result screens, not just the precedents", () => {
   // The deck screen is chosen from outside for the tour; the real result page
   // keeps its own, so nothing about it changes.
   assert.match(appSource, /const index = controlledIndex \?\? ownIndex;/);
@@ -410,7 +419,8 @@ test("the tour walks all three result screens, not just the precedents", () => {
   assert.match(appSource, /elements: GUIDE_ELEMENTS/);
   assert.match(appSource, /analysis: GUIDE_ANALYSIS/);
   // A fixed date would be quietly wrong a week later; the panel drops the line.
-  assert.match(appSource, /webCases: GUIDE_WEB_CASES, fetchedAt: null/);
+  assert.match(appSource, /cases: GUIDE_WEB_CASES/);
+  assert.match(appSource, /checkedAt: null/);
 });
 
 test("the guide is read at the reader's own pace when motion is unwelcome", () => {

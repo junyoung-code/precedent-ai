@@ -74,7 +74,24 @@ const AFFILIATION = /[가-힣]{2,10}(대학교|대학|고등학교|중학교|초
  * neutral summary legitimately needs. Rejecting on those would throw away good
  * posts to catch nothing.
  */
-const EXPLICIT_IN_QUOTE = /보지|자지|좆|꼬추|씹새|씹년|씹할|젖가슴|젖탱|따먹|걸레년|걸레같|창녀|창년|딸딸이|폰섹|니애미|니애비|느금마|느개비|애미|섹스/;
+/**
+ * Two of these are also ordinary verbs.
+ *
+ * `보지` is the stem of 보다 before a negative — 미리 보지 못해, 보지 않고 — and
+ * `자지` the same for 자다. Matched bare, they reject perfectly clean summaries:
+ * a neutral account of somebody who could not read the complaint beforehand was
+ * thrown out for containing a slur it does not contain. Both were rejecting
+ * good posts from the model's output too, silently, since the day this was
+ * written — a dropped item is only ever a count.
+ *
+ * The negative auxiliaries are the whole collision. As a noun the word is not
+ * followed by 못/않/말/마, so refusing to match there costs nothing.
+ */
+const VERB_NOT_SLUR = "(?!\\s*(?:못|않|말|마))";
+const EXPLICIT_IN_QUOTE = new RegExp(
+  `보지${VERB_NOT_SLUR}|자지${VERB_NOT_SLUR}|`
+  + "좆|꼬추|씹새|씹년|씹할|젖가슴|젖탱|따먹|걸레년|걸레같|창녀|창년|딸딸이|폰섹|니애미|니애비|느금마|느개비|애미|섹스",
+);
 
 function isPublicHttpUrl(value) {
   let url;
@@ -299,40 +316,62 @@ const MAX_PER_SOURCE = 2;
  */
 export const SEMANTIC_WEIGHT = 0.5;
 
+/**
+ * Whether the baiting posts should sort up for this reader.
+ *
+ * Not a finding about them, and never said to them. Somebody reported for
+ * something said to a stranger online is who those posts are about.
+ */
+export function readerFacesStranger({ facts = {}, role = null } = {}) {
+  return role === "reported"
+    && (facts.relationship === "stranger" || facts.relationship === "online_user");
+}
+
+/**
+ * How one stored post scores against one reader.
+ *
+ * Split out of `selectWebCases` because the pool ranks the whole collection
+ * with the same rules — two rankings that could drift apart is how a post ends
+ * up ordered one way in a batch and another way in the pool for the same
+ * reader. `base` is returned alongside the total because it is the part that
+ * means *this is the same kind of situation*; the bonuses only order what is
+ * already relevant, so a relevance floor has to be applied to `base` alone.
+ */
+export function scoreWebCase({ item, facts = {}, role = null, semantic = null, strangerOnline = false } = {}) {
+  const { factScore, comparableCount } = compareFactTags(facts, {
+    medium: item.medium || "unknown",
+    expressionType: item.expression || "other",
+  });
+  // A post is shared by both sides, so this is the only thing that tells them
+  // apart: one plainly written from the other side goes last.
+  const known = item.writerRole && item.writerRole !== "unclear" && role;
+  const roleScore = known ? (item.writerRole === role ? 40 : -40) : 0;
+  const endingScore = item.ending ? 15 : 0;
+  const situationScore = item.situation === "hunter_pattern" && strangerOnline ? 25 : 0;
+
+  // A post nobody has embedded yet is unknown, not dissimilar, so the tags
+  // carry the whole base rather than the post being scored as distant. That
+  // keeps the panel working unchanged offline, without consent, and on the
+  // day a new post is collected but not yet embedded.
+  const tagScore = comparableCount === 0 ? 0 : factScore;
+  const base = typeof semantic === "number"
+    ? semantic * SEMANTIC_WEIGHT + tagScore * (1 - SEMANTIC_WEIGHT)
+    : tagScore;
+
+  return { base, score: base + roleScore + endingScore + situationScore };
+}
+
 export function selectWebCases({
   cases, facts = {}, role = null, limit = WEB_CASE_DISPLAY_LIMIT, similarity = null,
 } = {}) {
   const readerMedium = facts.medium && facts.medium !== "unknown" ? facts.medium : null;
-  // Not a finding about the reader, and never said to them. Somebody reported
-  // for something said to a stranger online is who the baiting posts are about,
-  // so those posts sort higher for them and lower for everybody else.
-  const strangerOnline = role === "reported"
-    && (facts.relationship === "stranger" || facts.relationship === "online_user");
+  const strangerOnline = readerFacesStranger({ facts, role });
 
-  const scored = (cases || []).map((item, index) => {
-    const { factScore, comparableCount } = compareFactTags(facts, {
-      medium: item.medium || "unknown",
-      expressionType: item.expression || "other",
-    });
-    // The row is already shared by both sides, so this is the only thing that
-    // tells them apart: a post plainly written from the other side goes last.
-    const known = item.writerRole && item.writerRole !== "unclear" && role;
-    const roleScore = known ? (item.writerRole === role ? 40 : -40) : 0;
-    const endingScore = item.ending ? 15 : 0;
-    const situationScore = item.situation === "hunter_pattern" && strangerOnline ? 25 : 0;
-
-    // A post nobody has embedded yet is unknown, not dissimilar, so the tags
-    // carry the whole base rather than the post being scored as distant. That
-    // keeps the panel working unchanged offline, without consent, and on the
-    // day a new post is collected but not yet embedded.
-    const tagScore = comparableCount === 0 ? 0 : factScore;
-    const semantic = similarity?.get(item.url);
-    const base = typeof semantic === "number"
-      ? semantic * SEMANTIC_WEIGHT + tagScore * (1 - SEMANTIC_WEIGHT)
-      : tagScore;
-
-    return { item, index, score: base + roleScore + endingScore + situationScore };
-  });
+  const scored = (cases || []).map((item, index) => ({
+    item,
+    index,
+    ...scoreWebCase({ item, facts, role, semantic: similarity?.get(item.url), strangerOnline }),
+  }));
 
   scored.sort((left, right) => right.score - left.score || left.index - right.index);
 
