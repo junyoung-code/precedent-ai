@@ -29,17 +29,27 @@ if (!client) throw new Error("OPENAI_API_KEY_AND_ANALYSIS_MODEL_REQUIRED");
 const embeddingClient = createEmbeddingClientFromEnv();
 
 /**
- * The situations the gallery actually holds.
+ * The situations people actually arrive with.
  *
- * Counted, not guessed: 45 posts read from the 통매음 gallery tagged out as
- * sns_mention/sexual_image 6, game_chat/insult_with_sexual_terms 5,
- * game_chat/sexual_text 3, and everything else below that or unreadable. The
- * earlier guess had put 카카오톡 in this list; it appeared once in 45.
+ * Taken from the fact tags on the judgments in this database — 51 cases that
+ * reached a court — rather than from the gallery. The two disagree, and the
+ * disagreement matters: the gallery is where someone reported for in-game trash
+ * talk goes to vent, so counting it said game chat three ways. What gets
+ * prosecuted is pictures sent over a messenger.
+ *
+ *   kakao / sexual_image              7
+ *   digital_message / sexual_image    6
+ *   game_chat / insult_with_sexual_terms  4
+ *   sns_mention / sexual_image        4
+ *
+ * The gallery has nothing at all for the first of those — 카카오톡, 문자, 사진
+ * and 트위터 searches each returned zero usable posts — so that key is served by
+ * the web search alone, which is what it is good at. Two sources, two jobs.
  */
 const SAMPLE_PAIRS = [
+  ["카카오톡", "음란 사진 전송"],
   ["게임 채팅", "성적 욕설 패드립"],
   ["SNS 디엠", "음란 사진 전송"],
-  ["게임 채팅", "성적인 메시지"],
 ];
 const SAMPLE_KEYS = SAMPLE_PAIRS
   .map(([medium, expression]) => WEB_SEARCH_KEYS.find((key) => key.startsWith(`${medium} ${expression}`)))
