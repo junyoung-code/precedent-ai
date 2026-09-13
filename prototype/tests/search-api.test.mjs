@@ -586,13 +586,24 @@ test("POST /api/web-cases searches on the situation, never on the words the user
   // The query is built from tags before anything leaves the server, which is
   // also what lets one cached row serve everyone who lands on it.
   let seenKey = null;
+  let seenFacts = null;
   const pool = { query: async () => ({ rows: [] }) };
   const server = createSearchApiServer({
     pool,
     analysisClient: { model: "m" },
     readWeb: async ({ queryKey }) => {
       seenKey = queryKey;
-      return { cases: [{ title: "게임 통매음 질문", url: "https://www.lawtalk.co.kr/qna/1", sourceType: "lawyer_qna", quote: "게임 채팅 질문입니다.", medium: "game_chat", expression: "insult_with_sexual_terms", writerRole: "victim" }], fetchedAt: new Date(), stale: false };
+      return { cases: [], fetchedAt: new Date(), stale: false };
+    },
+    // The panel reads the pool now; the key above only decides whether a
+    // refresh is due. Both are built from tags, and neither may carry a word
+    // the reader typed.
+    searchPool: async ({ facts }) => {
+      seenFacts = facts;
+      return {
+        groups: [{ id: "closest", title: "내 상황과 가장 가까운 글", note: null, cases: [{ title: "게임 통매음 질문", url: "https://www.lawtalk.co.kr/qna/1", sourceType: "lawyer_qna", quote: "게임 채팅 질문입니다." }] }],
+        total: 1, matching: "semantic", checkedAt: null,
+      };
     },
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -610,15 +621,36 @@ test("POST /api/web-cases searches on the situation, never on the words the user
   const body = await response.json();
   assert.equal(seenKey, "게임 채팅 성적 욕설 패드립 통매음 통신매체이용음란");
   assert.equal(seenKey.includes("니애미"), false);
-  assert.equal(body.webCases.length, 1);
+  // The pool is narrowed on the same tags. `facts` does carry the reader's own
+  // normalised text for the statute screen's use, so what matters is which
+  // fields cross a boundary — see web-case-pool.test.mjs for the query itself.
+  assert.equal(seenFacts.medium, "game_chat");
+  assert.equal(body.groups[0].cases.length, 1);
 });
 
-test("POST /api/web-cases reads nothing without consent", async (t) => {
-  let called = false;
+/**
+ * A reader who declined AI declined sending their words to OpenAI. They did not
+ * decline our own database — and until the pool existed there was nothing to
+ * offer them, because every post on the panel was fetched by a model at request
+ * time. Now the posts are collected ahead of time and stored, so this path
+ * costs nothing and reaches nobody.
+ */
+test("POST /api/web-cases answers without consent, buying nothing to do it", async (t) => {
+  let refreshed = false;
+  let embedded = false;
+  let sawVector = "unset";
   const server = createSearchApiServer({
     pool: { query: async () => ({ rows: [] }) },
     analysisClient: { model: "m" },
-    readWeb: async () => { called = true; return { cases: [] }; },
+    embeddingClient: { model: "e", embed: async () => { embedded = true; return [0]; } },
+    readWeb: async () => { refreshed = true; return { cases: [] }; },
+    searchPool: async ({ queryVector }) => {
+      sawVector = queryVector;
+      return {
+        groups: [{ id: "closest", title: "내 상황과 가장 가까운 글", note: null, cases: [{ title: "질문", url: "https://www.lawtalk.co.kr/qna/2", sourceType: "lawyer_qna", quote: "요약입니다." }] }],
+        total: 1, matching: "tags", checkedAt: "2026-09-11T07:39:53.115Z",
+      };
+    },
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
@@ -628,8 +660,17 @@ test("POST /api/web-cases reads nothing without consent", async (t) => {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ redactedText: "게임 채팅으로 성적인 욕설을 들었습니다.", allowExternalAi: false }),
   });
-  assert.deepEqual((await response.json()).webCases, []);
-  assert.equal(called, false);
+  const body = await response.json();
+
+  assert.equal(refreshed, false, "동의 없이 유료 갱신이 돌았습니다");
+  assert.equal(embedded, false, "동의 없이 임베딩을 샀습니다");
+  assert.equal(sawVector, null, "동의 없는 경로에 벡터가 들어갔습니다");
+  assert.equal(body.groups[0].cases.length, 1);
+  // The screen has to be able to say which kind of matching it got.
+  assert.equal(body.matching, "tags");
+  // And when the links were opened. This path dropped the date on the way out,
+  // so the sentence promising the check ran printed without one.
+  assert.equal(body.checkedAt, "2026-09-11T07:39:53.115Z");
 });
 
 test("a locked analysis is never written, only unshown", async (t) => {

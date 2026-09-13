@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 
-const PURPOSES = new Set(["search_embedding", "case_analysis", "summary", "backfill_embedding", "other"]);
+// Has to agree with the CHECK constraint in db/migrations/012. A purpose this
+// set does not know is dropped silently by recordApiUsage, so a name added in
+// one place and not the other spends money that never appears anywhere.
+const PURPOSES = new Set([
+  "search_embedding", "case_analysis", "summary", "backfill_embedding", "web_batch", "other",
+]);
 
 const INSERT_SQL = `INSERT INTO api_usage
   (purpose, model, input_tokens, cached_input_tokens, output_tokens, web_searches, latency_ms, ok)

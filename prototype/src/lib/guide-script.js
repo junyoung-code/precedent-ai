@@ -247,7 +247,7 @@ export const GUIDE_WEB_CASES = Object.freeze([
  * Each step names what to light up and what the stage should be showing while
  * it is lit. `target` is a selector inside the stage — several are lit as one
  * rectangle covering them all, and `null` lights nothing, showing the screen
- * whole. `deck` is which of the three result screens is open.
+ * whole. `deck` is which of the four result screens is open.
  */
 export const GUIDE_STEPS = Object.freeze([
   {
@@ -364,7 +364,7 @@ export const GUIDE_STEPS = Object.freeze([
   {
     id: "deck",
     title: "판례가 끝이 아닙니다",
-    body: "이 화살표를 누르면 법조문 정리와 AI 설명으로 이어집니다. 세 화면 모두 같은 검색 하나에서 나온 것입니다.",
+    body: "이 화살표를 누르면 법조문 정리와 AI 설명, 비슷한 처지의 글로 이어집니다. 네 화면 모두 같은 검색 하나에서 나온 것입니다.",
     target: ".deck-arrow.is-next",
     scene: "results",
     results: "deck",
@@ -395,7 +395,7 @@ export const GUIDE_STEPS = Object.freeze([
     target: ".web-cases",
     scene: "results",
     results: "deck",
-    deck: 2,
+    deck: 3,
   },
   {
     id: "empty",

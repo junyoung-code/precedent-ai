@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  WEB_BATCH_SIZE, WEB_CASE_DISPLAY_LIMIT, WEB_MEDIUMS, WEB_SOURCE_TYPES, buildWebSearchQuery, selectWebCases, tidyTitle, validateWebCases, verifyWebCases,
+  DEFAULT_WEB_CACHE_TTL_HOURS, GALLERY_BATCH_SIZE, GALLERY_QUERY_LIMITS, WEB_BATCH_SIZE, WEB_CASE_DISPLAY_LIMIT, WEB_MEDIUMS, WEB_SOURCE_TYPES, buildGalleryQueries, buildWebSearchQuery, readCachedWebCases, webCacheTtlMs, selectWebCases, tidyTitle, validateWebCases, verifyWebCases,
 } from "../server/web-cases.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
 import { USER_AGENT } from "../server/robots.mjs";
@@ -279,4 +279,165 @@ test("keeps one copy of the vocabulary the screen and the server share", async (
   // The batch has to stay larger than the display, or picking per reader does
   // nothing at all.
   assert.ok(WEB_BATCH_SIZE > vocab.WEB_CASE_DISPLAY_LIMIT);
+});
+
+test("does not carry the words of the offence onto the page", () => {
+  // The gallery posts this reads quote, in full, what was said to the writer.
+  // The summary is the model's own sentence rather than a copy, so this is a
+  // backstop — but the reader on the other side of it may be the person those
+  // words were sent to, and showing them back is a different act from
+  // summarising a consultation question.
+  const { cases, dropped } = validateWebCases([
+    { ...ok, quote: "상대가 걸레년이라고 반복해서 보냈다는 글입니다." },
+    ok,
+  ]);
+  assert.deepEqual(cases.map((item) => item.url), [ok.url]);
+  assert.equal(dropped.includes("explicit"), true);
+});
+
+test("does not mistake 보지 못하다 and 자지 않다 for the slurs they are spelled like", () => {
+  // Both are ordinary verb stems before a negative, and both were rejecting
+  // clean summaries — a neutral account of somebody who could not read the
+  // complaint beforehand was thrown out for a slur it does not contain. A
+  // dropped item is only ever a count, so this went unnoticed.
+  const clean = [
+    "글쓴이는 고소장을 미리 보지 못해 무슨 말을 했는지 떠올리기 어려웠다고 적었습니다.",
+    "글쓴이는 연락을 받은 뒤 며칠 동안 자지 못했다고 적었습니다.",
+    "글쓴이는 상대의 글을 더 보지 않고 차단했다고 적었습니다.",
+  ].map((quote) => ({ ...ok, url: `https://example.test/${encodeURIComponent(quote.slice(0, 8))}`, quote }));
+
+  const { cases, dropped } = validateWebCases(clean, { limit: clean.length });
+  assert.equal(cases.length, clean.length, `깨끗한 요약이 걸렸습니다: ${dropped.join(", ")}`);
+
+  // The noun still is one, and the other terms are untouched.
+  const caught = validateWebCases([{ ...ok, quote: "상대가 보지 사진을 보냈다는 글입니다." }]);
+  assert.equal(caught.dropped.includes("explicit"), true);
+});
+
+test("keeps the words a neutral summary actually needs", () => {
+  // The rejection list is deliberately narrower than SEXUAL_SLUR_TERMS in
+  // fact-tags.js. That list exists to recognise a complaint, so it holds 성희롱,
+  // 성드립 and 패드립 — rejecting on those would throw away good posts to catch
+  // nothing.
+  const { cases } = validateWebCases([
+    { ...ok, quote: "게임 채팅에서 성드립과 패드립을 들었다는 글입니다." },
+    { ...ok, url: "https://www.lawtalk.co.kr/qna/2", quote: "직장에서 성희롱을 겪었다고 적은 글입니다." },
+  ]);
+  assert.equal(cases.length, 2);
+});
+
+test("reads whether a post has an ending, and refuses to invent one", () => {
+  const [told] = validateWebCases([{ ...ok, ending: true, situation: "hunter_pattern" }]).cases;
+  assert.equal(told.ending, true);
+  assert.equal(told.situation, "hunter_pattern");
+
+  // Anything the batch did not say is not true by omission, and a situation
+  // this file does not know is not passed through under its own name.
+  const [bare] = validateWebCases([{ ...ok, ending: "그렇다", situation: "무언가" }]).cases;
+  assert.equal(bare.ending, false);
+  assert.equal(bare.situation, null);
+});
+
+test("will not give one site the whole panel", () => {
+  // The panel was 87% Lawtalk. That matters because a consultation post stops
+  // at the question, so a reader who got three of them learned what other
+  // people asked and nothing about how any of it went.
+  const cases = [
+    { title: "로톡 1", url: "https://www.lawtalk.co.kr/qna/1", medium: "game_chat", expression: "other", writerRole: "victim" },
+    { title: "로톡 2", url: "https://www.lawtalk.co.kr/qna/2", medium: "game_chat", expression: "other", writerRole: "victim" },
+    { title: "로톡 3", url: "https://www.lawtalk.co.kr/qna/3", medium: "game_chat", expression: "other", writerRole: "victim" },
+    { title: "디시 1", url: "https://gall.dcinside.com/board/view/?id=a&no=1", medium: "game_chat", expression: "other", writerRole: "victim" },
+  ];
+  const picked = selectWebCases({ cases, facts: { medium: "game_chat" } });
+  assert.equal(picked.length, 3);
+  assert.equal(picked.filter((item) => item.url.includes("lawtalk")).length, 2);
+  assert.equal(picked.filter((item) => item.url.includes("dcinside")).length, 1);
+});
+
+test("fills the panel from what is left rather than holding a slot empty", () => {
+  // The gallery yields a third of what it reads, so there will be days with
+  // nothing from it. A slot that could be filled honestly should be.
+  const cases = [
+    { title: "로톡 1", url: "https://www.lawtalk.co.kr/qna/1", medium: "game_chat", expression: "other", writerRole: "victim" },
+    { title: "로톡 2", url: "https://www.lawtalk.co.kr/qna/2", medium: "game_chat", expression: "other", writerRole: "victim" },
+  ];
+  assert.equal(selectWebCases({ cases, facts: { medium: "game_chat" } }).length, 2);
+});
+
+test("puts the post with an ending in front of the one without", () => {
+  const cases = [
+    { title: "질문", url: "https://www.lawtalk.co.kr/qna/1", medium: "game_chat", expression: "other", writerRole: "victim", ending: false },
+    { title: "후기", url: "https://gall.dcinside.com/board/view/?id=a&no=1", medium: "game_chat", expression: "other", writerRole: "victim", ending: true },
+  ];
+  assert.deepEqual(selectWebCases({ cases, facts: { medium: "game_chat" } }).map((item) => item.title), ["후기", "질문"]);
+});
+
+test("sorts the baiting posts toward the reader they are about, and says nothing", () => {
+  // Somebody reported for something said to a stranger online is who those
+  // posts are about. This changes the order and nothing else: no wording
+  // anywhere tells a reader what happened to them.
+  const cases = [
+    { title: "일반 후기", url: "https://gall.dcinside.com/board/view/?id=a&no=1", medium: "game_chat", expression: "other", writerRole: "reported", ending: true, situation: null },
+    { title: "헌터 글", url: "https://gall.dcinside.com/board/view/?id=b&no=2", medium: "game_chat", expression: "other", writerRole: "reported", ending: true, situation: "hunter_pattern" },
+  ];
+  const facts = { medium: "game_chat", relationship: "stranger" };
+  assert.deepEqual(
+    selectWebCases({ cases, facts, role: "reported" }).map((item) => item.title),
+    ["헌터 글", "일반 후기"],
+  );
+  // A reader the pattern is not about is not steered toward it.
+  assert.deepEqual(
+    selectWebCases({ cases, facts: { medium: "game_chat", relationship: "partner_or_ex" }, role: "reported" }).map((item) => item.title),
+    ["일반 후기", "헌터 글"],
+  );
+});
+
+test("asks the gallery in the complainant's words too, not only the accused person's", () => {
+  // 후기 and 불송치 are both what somebody who got reported writes — 불송치 is
+  // the outcome they are hoping for. The first real run proved the cost of
+  // asking only that way: all nine posts came back labelled reported, and a
+  // reader on the receiving end saw nothing from the gallery at all.
+  const queries = buildGalleryQueries("카카오톡 성적 욕설 패드립 통매음 통신매체이용음란");
+  assert.equal(queries.length, GALLERY_QUERY_LIMITS.length, "검색어마다 몫이 있어야 합니다");
+  assert.deepEqual(queries.slice(0, 2), ["카카오톡 통매음 후기", "카카오톡 통매음 불송치"]);
+  // No medium on the third: there are far fewer complainant-side posts, and
+  // narrowing by medium as well returned nothing on the live search.
+  assert.equal(queries[2], "통매음 고소 후기");
+});
+
+test("still asks something when the key names no medium it knows", () => {
+  const queries = buildGalleryQueries("통매음 통신매체이용음란");
+  assert.deepEqual(queries.slice(0, 2), ["통매음 후기", "통매음 불송치"]);
+});
+
+test("lets the most expensive lever be moved without a redeploy", () => {
+  // A refresh is two model calls, one of them billed per tool call, and the TTL
+  // is what decides how often anybody buys one. At 24 hours across 28 keys that
+  // is up to 28 a day, and somebody browsing their own service to see how it
+  // looks was buying them by opening a page. It was a code constant.
+  assert.equal(webCacheTtlMs({}), DEFAULT_WEB_CACHE_TTL_HOURS * 60 * 60 * 1000);
+  assert.equal(webCacheTtlMs({ WEB_CACHE_TTL_HOURS: "720" }), 720 * 60 * 60 * 1000);
+  // Nonsense falls back rather than disabling the cache or making it eternal.
+  for (const bad of ["", "0", "-5", "abc", undefined]) {
+    assert.equal(webCacheTtlMs({ WEB_CACHE_TTL_HOURS: bad }), DEFAULT_WEB_CACHE_TTL_HOURS * 60 * 60 * 1000);
+  }
+});
+
+test("reads staleness against the ttl it was given", async () => {
+  const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const pool = { query: async () => ({ rows: [{ cases: [], model: "m", fetchedAt: twoDaysAgo }] }) };
+  assert.equal((await readCachedWebCases({ pool, queryKey: "q", ttlMs: 24 * 60 * 60 * 1000 })).stale, true);
+  assert.equal((await readCachedWebCases({ pool, queryKey: "q", ttlMs: 720 * 60 * 60 * 1000 })).stale, false);
+});
+
+test("keeps the paid web search out of the pool that grew", () => {
+  // One constant used to decide how many posts to ask the web search for, where
+  // to cut the gallery's, and how large a stored batch may be. Growing the pool
+  // meant growing the billed search along with it.
+  assert.equal(GALLERY_BATCH_SIZE > WEB_BATCH_SIZE, true, "갤러리 풀이 검색 배치보다 커야 합니다");
+  assert.equal(
+    GALLERY_QUERY_LIMITS.reduce((sum, n) => sum + n, 0) <= GALLERY_BATCH_SIZE,
+    true,
+    "검색어 몫의 합이 요약 상한을 넘으면 뒤쪽 검색어가 잘립니다",
+  );
 });

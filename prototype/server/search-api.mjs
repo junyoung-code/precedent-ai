@@ -3,8 +3,10 @@ import { readFile } from "node:fs/promises";
 import { normalizeSearchQuery, searchPrecedents } from "./search-precedents.mjs";
 import { extractFactTags } from "../src/lib/fact-tags.js";
 import { validateGroundedAnalysis } from "./grounded-analysis.mjs";
-import { buildWebSearchQuery, selectWebCases } from "./web-cases.mjs";
+import { buildWebSearchQuery } from "./web-cases.mjs";
+import { readWebCasePoolStats, searchWebCasePool } from "./web-case-pool.mjs";
 import { readWebCasesWithRefresh } from "./web-case-refresh.mjs";
+import { buildQueryEmbeddingInput } from "./embedding-input.mjs";
 import { resolveEntitlement } from "./entitlements.mjs";
 import { buildFixtureAnalysis, readAnalysisFixture } from "./offline-mode.mjs";
 import { ARTICLE_13_NOTES, mapFactsToArticle13 } from "./statute-elements.mjs";
@@ -155,24 +157,95 @@ async function analyseCase({ pool, body, analysisClient, extractFacts, entitleme
 /**
  * Similar posts, served from the cache rather than fetched per reader.
  *
- * Free and separate from the analysis on purpose: this is a database read, so
- * it lands with the precedent cards instead of behind a model that takes ten
- * seconds, and a reader without a plan still gets it.
+ * Separate from the analysis on purpose: it lands with the precedent cards
+ * instead of behind a model that takes ten seconds, and a reader without a plan
+ * still gets it.
+ *
+ * It is no longer quite free. Reading the batch is still a database read, but
+ * choosing among it now costs one embedding of the reader's own account — about
+ * 140 tokens, against roughly 24,000 for one analysis. That is what buys a
+ * panel belonging to this reader rather than to their situation type; without
+ * it, everyone whose case reduces to the same two tags sees the same three
+ * posts.
  */
-async function readWebCases({ pool, body, analysisClient, extractFacts, readWeb = readWebCasesWithRefresh, offline = false }) {
+async function readWebCases({
+  pool, body, analysisClient, extractFacts, readWeb = readWebCasesWithRefresh,
+  offline = false, embeddingClient = null, searchPool = searchWebCasePool,
+}) {
   const { redactedText, described } = describedCase(body);
   if (!redactedText) throw intakeInputError();
-  if (body.allowExternalAi !== true) return { webCases: [], fetchedAt: null, unavailable: "ANALYSIS_DISABLED" };
 
   const facts = extractFacts(described);
+  const role = body.role || null;
+
+  // Without consent this used to answer with nothing at all, because every post
+  // on the panel had been fetched by a model at request time. They are ours now
+  // — collected ahead of time, stored, link-checked — so choosing among them on
+  // the tags reaches no external service and costs nothing. A reader who
+  // declined AI has not declined our own database.
+  if (body.allowExternalAi !== true) {
+    const found = await searchPool({ pool, queryVector: null, facts, role });
+    return {
+      groups: found.groups,
+      matching: found.matching,
+      checkedAt: found.checkedAt,
+      unavailable: found.total === 0 ? "WEB_CASES_EMPTY" : null,
+    };
+  }
+
   const queryKey = buildWebSearchQuery(facts);
   // Passing no client is what stops a stale row from starting a paid refresh.
-  const cached = await readWeb({ pool, client: offline ? null : analysisClient, queryKey });
+  const started = Date.now();
+  const cached = await readWeb({
+    pool,
+    client: offline ? null : analysisClient,
+    queryKey,
+    embeddingClient,
+    // A refresh runs behind this response and spends real money doing it: two
+    // model calls, one of them with the web_search tool, which is billed per
+    // call. Until this was wired up none of it reached api_usage, so the only
+    // spending the dashboard could not see was the spending nobody triggered
+    // on purpose. Not awaited, for the same reason the refresh is not.
+    onRefresh: (running) => {
+      void running.then((result) => recordApiUsage({
+        pool,
+        purpose: "web_batch",
+        model: analysisClient.model,
+        usage: result?.usage,
+        webSearches: result?.webSearches,
+        latencyMs: Date.now() - started,
+        ok: result?.ok !== false,
+      })).catch(() => {});
+    },
+  });
+  // What makes the panel this reader's rather than their situation-type's.
+  //
+  // The description still never leaves as a search query. It becomes a vector,
+  // compared against vectors of posts other people published — and now against
+  // the whole pool rather than one key's batch, which is the point of the pool:
+  // the batch above is a rate limit on refreshing, not a wall around what this
+  // reader is allowed to be matched to.
+  let queryVector = null;
+  if (embeddingClient) {
+    try {
+      queryVector = await embeddingClient.embed(buildQueryEmbeddingInput(described));
+    } catch {
+      // Ranking on tags alone is the behaviour this panel had for its whole
+      // life. It is not worth failing a free request over.
+      queryVector = null;
+    }
+  }
+
+  const found = await searchPool({ pool, queryVector, facts, role });
   return {
-    webCases: selectWebCases({ cases: cached.cases, facts, role: body.role || null }),
-    fetchedAt: cached.fetchedAt ? new Date(cached.fetchedAt).toISOString() : null,
+    groups: found.groups,
+    matching: found.matching,
+    // What the sentence under the list actually claims: that the server opened
+    // each of these addresses. It used to report when the batch was fetched,
+    // which was a different date about a different act.
+    checkedAt: found.checkedAt,
     fixture: offline || undefined,
-    unavailable: cached.cases.length === 0 ? "WEB_CASES_EMPTY" : null,
+    unavailable: found.total === 0 ? "WEB_CASES_EMPTY" : null,
   };
 }
 
@@ -200,6 +273,7 @@ export function createSearchApiServer({
   buildQuestions = buildIntakeQuestions,
   entitlements = resolveEntitlement,
   readWeb = readWebCasesWithRefresh,
+  searchPool = searchWebCasePool,
   // Nothing external is called at all: no model, no embedding, no refresh.
   offline = false,
   // Off unless asked for. It is a window onto spending, not something a
@@ -218,11 +292,15 @@ export function createSearchApiServer({
     }
     if (devDashboard && request.method === "GET" && url.pathname === "/api/dev/usage") {
       const prices = await readModelPrices();
-      const [usage, corpus] = await Promise.all([
+      const [usage, corpus, webPool] = await Promise.all([
         readUsageSummary({ pool, days: url.searchParams.get("days"), prices }),
         readCorpusHealth({ pool }),
+        // The panel draws only on posts whose link has been checked, so a pool
+        // that has grown without a check run is a screen quietly getting
+        // emptier. Nothing about that is visible from the token counts.
+        readWebCasePoolStats({ pool }).catch(() => null),
       ]);
-      return sendJson(response, 200, { ...usage, corpus });
+      return sendJson(response, 200, { ...usage, corpus, webPool });
     }
 
     try {
@@ -284,7 +362,13 @@ export function createSearchApiServer({
       if (request.method === "POST" && url.pathname === "/api/web-cases") {
         const body = await readJson(request);
         return sendJson(response, 200, await readWebCases({
-          pool, body, analysisClient, extractFacts, readWeb, offline,
+          pool, body, analysisClient, extractFacts, readWeb, searchPool, offline,
+          // Metered through the same wrapper the precedent search uses, so the
+          // one embedding this costs is written down as search_embedding
+          // without a purpose or a migration of its own.
+          embeddingClient: !offline && body.allowExternalAi === true
+            ? meteredEmbeddingClient({ client: embeddingClient, pool })
+            : null,
         }));
       }
 

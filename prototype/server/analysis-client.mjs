@@ -1,6 +1,6 @@
 import { ARTICLE_13_ELEMENTS } from "./statute-elements.mjs";
 import {
-  WEB_BATCH_SIZE, WEB_EXPRESSIONS, WEB_MEDIUMS, WEB_SOURCE_TYPES, WEB_WRITER_ROLES,
+  GALLERY_BATCH_SIZE, WEB_BATCH_SIZE, WEB_EXPRESSIONS, WEB_MEDIUMS, WEB_SOURCE_TYPES, WEB_WRITER_ROLES,
 } from "./web-cases.mjs";
 
 const DEFAULT_ENDPOINT = "https://api.openai.com/v1/responses";
@@ -121,6 +121,44 @@ const WEB_BATCH_INSTRUCTIONS = [
   "각 글에 medium(매체), expression(표현 종류), writerRole(글쓴이가 피해자인지 신고당한 쪽인지)을 붙이세요.",
   "writerRole은 글에서 분명히 드러날 때만 victim 또는 reported로 하고, 애매하면 unclear로 두세요.",
 ].join(" ");
+
+// The posts are already in hand, so nothing here asks for a search or an
+// address. What is left is the one thing a model is needed for: saying what a
+// post is about without repeating how it says it.
+const WEB_SUMMARY_INSTRUCTIONS = [
+  "주어진 글 각각을 두세 문장으로 요약하세요. 새로 검색하지 말고 주어진 본문만 읽으세요.",
+  "요약은 그 사람이 어떤 상황이었고 어떻게 되었는지를 담으세요. 결과가 적혀 있으면 그 결과도 적으세요.",
+  "원문의 욕설, 성적인 표현, 비속어를 옮기지 마세요. 무슨 일이 있었는지만 중립적인 말로 쓰세요.",
+  "글쓴이나 등장인물의 이름·연락처·계정·학교·회사·지역을 옮기지 마세요.",
+  "법적 결론을 쓰지 마세요. 성립한다, 처벌받는다, 무죄다 같은 판단을 요약에 담지 마세요.",
+  "글에 적힌 내용만 쓰고, 적혀 있지 않은 결과나 사정을 추측해서 채우지 마세요.",
+  "글쓴이_입장은 그 글에서 분명히 드러날 때만 victim 또는 reported로 하고, 애매하면 unclear로 두세요.",
+  "번호는 입력에서 받은 번호를 그대로 돌려주세요. 없는 번호를 만들지 마세요.",
+].join(" ");
+
+function webSummarySchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["summaries"],
+    properties: {
+      summaries: {
+        type: "array",
+        maxItems: GALLERY_BATCH_SIZE,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["번호", "요약", "글쓴이_입장"],
+          properties: {
+            번호: { type: "integer", minimum: 0, maximum: GALLERY_BATCH_SIZE - 1 },
+            요약: { type: "string", minLength: 1, maxLength: 300 },
+            글쓴이_입장: { type: "string", enum: WEB_WRITER_ROLES },
+          },
+        },
+      },
+    },
+  };
+}
 
 function analysisError(code, message) {
   return Object.assign(new Error(message), { code });
@@ -271,6 +309,69 @@ export class OpenAiAnalysisClient {
     } catch {
       throw analysisError("ANALYSIS_RESPONSE_INVALID", "웹 검색 응답 형식이 올바르지 않습니다.");
     }
+  }
+
+  /**
+   * Writes a neutral line about posts we already have, and labels them.
+   *
+   * The difference from searchWebCases is the whole point: no `web_search`
+   * tool. The searching was done by dcinside-cases.mjs against the gallery's
+   * own search, because the index behind the tool does not hold those pages —
+   * DCInside refuses the crawlers that build it. So the model is handed the
+   * posts and asked only to read them.
+   *
+   * Two things follow. A url cannot be hallucinated, because the model is not
+   * asked for one — it comes back keyed by an index into what we sent. And the
+   * quote is a sentence the model wrote rather than a passage it copied, which
+   * matters more here than it did for consultation posts: these writers quote
+   * in full what was said to them.
+   */
+  async summarizeWebPosts({ posts }) {
+    const items = (Array.isArray(posts) ? posts : []).slice(0, GALLERY_BATCH_SIZE);
+    if (items.length === 0) throw analysisError("WEB_POSTS_REQUIRED", "요약할 글이 필요합니다.");
+
+    const payload = await this.request({
+      model: this.model,
+      store: false,
+      instructions: WEB_SUMMARY_INSTRUCTIONS,
+      input: JSON.stringify({
+        글목록: items.map((post, index) => ({
+          번호: index,
+          제목: String(post?.title || "").slice(0, 200),
+          본문: String(post?.body || "").slice(0, 1_500),
+        })),
+      }),
+      text: { format: { type: "json_schema", name: "summarized_web_posts", strict: true, schema: webSummarySchema() } },
+    });
+
+    const body = outputText(payload);
+    if (!body) throw analysisError("ANALYSIS_RESPONSE_INVALID", "요약 응답이 비어 있습니다.");
+    let parsed;
+    try {
+      parsed = JSON.parse(body).summaries || [];
+    } catch {
+      throw analysisError("ANALYSIS_RESPONSE_INVALID", "요약 응답 형식이 올바르지 않습니다.");
+    }
+
+    // The address is ours, not the model's. Anything pointing outside the batch
+    // we sent is discarded rather than repaired.
+    const webCases = [];
+    for (const summary of parsed) {
+      const post = items[summary?.번호];
+      if (!post) continue;
+      webCases.push({
+        title: post.title,
+        url: post.url,
+        sourceType: "community",
+        quote: summary.요약,
+        medium: post.medium || "unknown",
+        expression: post.expression || "other",
+        writerRole: summary.글쓴이_입장,
+        ending: post.ending === true,
+        situation: post.situation || null,
+      });
+    }
+    return { webCases, usage: payload?.usage || null, webSearches: 0 };
   }
 }
 

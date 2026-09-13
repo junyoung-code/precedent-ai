@@ -3,7 +3,7 @@ import { extractCaseFacts } from "./lib/search.js";
 import { redactSensitiveText } from "./lib/privacy-redaction.js";
 import { abandonIntake, answerIntake, cancelIntake, completeIntake, createIntake } from "./lib/intake-api.js";
 import { analyseCase, fetchWebCases } from "./lib/analysis-api.js";
-import { WEB_SOURCE_TYPE_LABEL } from "./lib/web-case-vocab.js";
+import { WEB_CASE_GROUP_VISIBLE, WEB_SOURCE_TYPE_LABEL } from "./lib/web-case-vocab.js";
 import { PROCEDURE_CAUTION, PROCEDURE_LEAD, procedureStages } from "./lib/procedure-timeline.js";
 import { glossTokens } from "./lib/glossary.js";
 import {
@@ -786,39 +786,115 @@ function WebCasesPanel({ state }) {
   if (state?.loading) {
     return (
       <div className="analysis-card web-cases">
-        <h3>비슷한 상황을 겪은 사람들의 글</h3>
         <div className="skeleton-list" aria-hidden="true">
-          {[0, 1, 2].map((row) => <div key={row} className="skeleton-row" />)}
+          {[0, 1, 2, 3, 4].map((row) => <div key={row} className="skeleton-row" />)}
         </div>
       </div>
     );
   }
-  const webCases = state?.webCases || [];
-  if (webCases.length === 0) return null;
-  const fetchedOn = state?.fetchedAt ? new Date(state.fetchedAt) : null;
+  const groups = state?.groups || [];
+  const total = groups.reduce((count, group) => count + group.cases.length, 0);
+  const checkedOn = state?.checkedAt ? new Date(state.checkedAt) : null;
+
   return (
     <div className="analysis-card web-cases">
-      <h3>비슷한 상황을 겪은 사람들의 글</h3>
+      {/*
+        The warning is the first thing on the screen now, not a line inside a
+        card two thirds of the way down one. A whole screen of community posts
+        is a different weight of claim than three at the bottom of another.
+      */}
       <p className="web-cases-warning">
         <strong>개인이 인터넷에 쓴 글입니다. 법적으로 정확하지 않을 수 있습니다.</strong>
         {" "}판단의 근거로 삼지 마시고, 참고만 하십시오. 위 판례 화면의 기록과는 성격이 완전히 다릅니다.
       </p>
+
+      {total === 0 ? (
+        <p className="web-cases-empty">
+          아직 회원님과 비슷한 상황의 글을 모으지 못했습니다. 비슷해 보이는 글을 억지로 채워 보여드리지 않습니다.
+        </p>
+      ) : (
+        <>
+          {groups.map((group, position) => (
+            // Only the first opens. Four expanded groups is a scroll nobody
+            // reads; the headings and counts are what tell the reader there is
+            // more, and they are visible either way.
+            <WebCaseGroup key={group.id} group={group} open={position === 0} />
+          ))}
+          <p className="source-reminder">
+            {state?.matching === "tags"
+              ? "AI 분석에 동의하지 않으셔서, 매체와 표현 종류만 맞춰 고른 글입니다. 동의하시면 사연 전체와 비교해 더 가까운 글을 찾습니다. "
+              : "회원님이 적은 내용과 각 글을 비교해 가까운 순으로 고른 것입니다. "}
+            서버가 각 주소에 실제로 접속해 존재를 확인한 글만 남겼고, 요약은 AI가 쓴 것이므로 원문을 직접 확인하십시오.
+            {checkedOn && ` 링크 확인 ${checkedOn.getMonth() + 1}월 ${checkedOn.getDate()}일 기준입니다.`}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function WebCaseItem({ item, folded = false }) {
+  return (
+    <li className="web-case" hidden={folded}>
+      {/*
+        The kind of site is carried as a class as well as a word, so the chips
+        can be told apart at a glance in a list of twenty. A reader scanning for
+        somebody's own account rather than a lawyer's answer is scanning for a
+        colour before they read anything.
+      */}
+      <span className={`web-case-type is-${item.sourceType}`}>
+        {WEB_SOURCE_TYPE_LABEL[item.sourceType] || "웹"}
+      </span>
+      {/*
+        Says only that this post reaches an end, which is the thing the
+        consultation questions beside it never do. It describes the post, the
+        same way the source label does — it is not a reading of the reader's own
+        case, and the counts behind these are never added up into a rate.
+      */}
+      {item.ending && <span className="web-case-ending">결과 있음</span>}
+      <a href={item.url} target="_blank" rel="noopener noreferrer nofollow">
+        {item.title} <span aria-hidden="true">↗</span>
+      </a>
+      <p className="web-case-quote"><span className="ai-tag">AI</span> {item.quote}</p>
+    </li>
+  );
+}
+
+/**
+ * One kind of post, with the rest of its kind a click away.
+ *
+ * The groups are what a screen of its own buys. Twenty-four links in one list
+ * is a worse answer than three: the reader cannot tell why any of them is
+ * there. Named groups say what each one is for, and 결과까지 적힌 글 in
+ * particular is the material the consultation sites structurally cannot give.
+ */
+function WebCaseGroup({ group, open }) {
+  const [expanded, setExpanded] = useState(open);
+  const hidden = group.cases.length - WEB_CASE_GROUP_VISIBLE;
+  // Folded, not absent. Slicing the array would have kept the extra posts out
+  // of the document altogether, and printing the result would then have saved
+  // whichever groups the reader happened to open — the same failure the deck's
+  // own print rule exists to prevent, arriving by a different door.
+  const folded = (position) => !expanded && position >= WEB_CASE_GROUP_VISIBLE;
+  return (
+    <section className="web-case-group">
+      <h3>
+        {group.title}
+        <span className="web-case-count">{group.cases.length}건</span>
+      </h3>
+      {group.note && <p className="web-case-note">{group.note}</p>}
       <ul className="web-case-list">
-        {webCases.map((item) => (
-          <li key={item.url} className="web-case">
-            <span className="web-case-type">{WEB_SOURCE_TYPE_LABEL[item.sourceType] || "웹"}</span>
-            <a href={item.url} target="_blank" rel="noopener noreferrer nofollow">
-              {item.title} <span aria-hidden="true">↗</span>
-            </a>
-            <p className="web-case-quote"><span className="ai-tag">AI</span> {item.quote}</p>
-          </li>
+        {group.cases.map((item, position) => (
+          <WebCaseItem key={item.url} item={item} folded={folded(position)} />
         ))}
       </ul>
-      <p className="source-reminder">
-        AI가 웹에서 찾아온 글이며, 서버가 각 주소에 실제로 접속해 존재를 확인한 것만 남겼습니다. 요약은 AI가 쓴 것이므로 원문을 직접 확인하십시오.
-        {fetchedOn && ` ${fetchedOn.getMonth() + 1}월 ${fetchedOn.getDate()}일 기준입니다.`}
-      </p>
-    </div>
+      {hidden > 0 && (
+        <button type="button" className="web-case-more" onClick={() => setExpanded(!expanded)}>
+          {expanded ? "접기" : `${hidden}건 더 보기`}
+          <span aria-hidden="true">{expanded ? " ⌃" : " ⌄"}</span>
+        </button>
+      )}
+    </section>
   );
 }
 
@@ -894,6 +970,14 @@ const RESULT_SCREENS = [
   // analysis, is the one card no model wrote. The AI mark stays: it says which
   // screen the generated part lives on, and each card says which kind it is.
   { id: "summary", title: "내 사건 정리와 이후 절차", generated: true },
+  // Its own screen since it stopped being three links.
+  //
+  // It sat at the bottom of the summary screen, under the AI reading and the
+  // procedure — third card, third screen, which is where a reader stops. The
+  // thing most people come here for was the thing hardest to reach and the
+  // thing there was least of. The AI mark is for the summaries: the posts are
+  // other people's, the sentence under each one is ours.
+  { id: "webCases", title: "비슷한 상황을 겪은 사람들", generated: true, waitsOn: "webCases" },
 ];
 
 /**
@@ -926,6 +1010,13 @@ function ResultDeck({ precedents, resultCount, analysisState, webCasesState, rol
 
   const previous = RESULT_SCREENS[index - 1];
   const next = RESULT_SCREENS[index + 1];
+  // Which request a screen is still waiting on. The two arrive separately and
+  // at different speeds — the posts are a database read, the analysis is a
+  // model — so a single `loading` spun the arrow to the web screen for ten
+  // seconds after its own content was ready.
+  const waiting = (screen) => (screen?.waitsOn === "webCases"
+    ? webCasesState?.loading === true
+    : Boolean(screen?.generated) && state.loading);
   const panels = {
     precedents,
     statute: (
@@ -939,6 +1030,11 @@ function ResultDeck({ precedents, resultCount, analysisState, webCasesState, rol
         <p className="screen-lead">이 화면은 AI가 쓴 설명과, 생성하지 않은 절차 안내가 함께 있습니다. 카드마다 어느 쪽인지 적혀 있습니다.</p>
         <AiSummaryPanel state={state} />
         <ProcedurePanel role={role} />
+      </>
+    ),
+    webCases: (
+      <>
+        <p className="screen-lead">같은 일을 겪은 사람들이 직접 쓴 글을, 회원님 사연과 가까운 순으로 모았습니다. 판례가 아니라 개인의 이야기입니다.</p>
         <WebCasesPanel state={webCasesState} />
       </>
     ),
@@ -974,7 +1070,7 @@ function ResultDeck({ precedents, resultCount, analysisState, webCasesState, rol
           >
             <span className="deck-arrow-label">{next.title}</span>
             <span aria-hidden="true" className="deck-arrow-mark">→</span>
-            {next.generated && state.loading && <span className="deck-arrow-spinner" aria-hidden="true" />}
+            {waiting(next) && <span className="deck-arrow-spinner" aria-hidden="true" />}
           </button>
         ) : <span />}
       </div>
@@ -992,7 +1088,7 @@ function ResultDeck({ precedents, resultCount, analysisState, webCasesState, rol
                 {screen.generated && <span className="screen-ai" aria-hidden="true">AI</span>}
                 {screen.title}
                 {screen.id === "precedents" && resultCount > 0 && <span className="screen-count">{resultCount}건</span>}
-                {screen.generated && state.loading && <span className="screen-spinner" aria-label="불러오는 중" />}
+                {waiting(screen) && <span className="screen-spinner" aria-label="불러오는 중" />}
               </h2>
             </header>
             {panels[screen.id]}
@@ -1189,7 +1285,7 @@ export function App() {
   async function requestAnalysis({ redactedText, answers, precedents }) {
     const token = ++analysisTokenRef.current;
     setAnalysisState({ loading: true, statute: null, elements: [], analysis: null, unavailable: null });
-    setWebCases({ loading: true, webCases: [], fetchedAt: null, unavailable: null });
+    setWebCases({ loading: true, groups: [], checkedAt: null, unavailable: null });
 
     // A cache read, so it lands with the precedent cards rather than behind the
     // model. Deliberately not awaited together with the analysis.
@@ -1410,7 +1506,13 @@ const GUIDE_ANALYSIS_STATE = {
 
 // No date: a fixed one would be quietly wrong a week later, and the panel drops
 // the line rather than printing a stale "기준" date.
-const GUIDE_WEB_STATE = { loading: false, webCases: GUIDE_WEB_CASES, fetchedAt: null, unavailable: null };
+const GUIDE_WEB_STATE = {
+  loading: false,
+  groups: [{ id: "closest", title: "내 상황과 가장 가까운 글", note: null, cases: GUIDE_WEB_CASES }],
+  matching: "semantic",
+  checkedAt: null,
+  unavailable: null,
+};
 
 function guideNoop() {}
 

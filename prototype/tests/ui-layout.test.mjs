@@ -39,6 +39,9 @@ test("keeps every result panel in the printed copy", () => {
   // Saving the result must not save only whichever tab happened to be open.
   assert.match(css, /@media print[\s\S]*?\.deck-screen\[hidden\] \{ display: block !important; \}/);
   assert.match(css, /@media print[\s\S]*?\.deck-arrow, \.deck-progress/);
+  // Nor only the groups the reader happened to unfold. The folded posts are in
+  // the document for this reason — see WebCaseGroup.
+  assert.match(css, /@media print[\s\S]*?\.web-case\[hidden\] \{ display: list-item !important; \}/);
 });
 
 test("separates quoted law, applied rule, and generated text by size and weight", () => {

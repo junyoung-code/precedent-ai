@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { validateGroundedAnalysis } from "../server/grounded-analysis.mjs";
@@ -186,6 +187,24 @@ test("the example web post is one the real validator keeps", () => {
   for (const item of GUIDE_WEB_CASES) assert.match(item.url, /^https:\/\//);
 });
 
+/**
+ * Counted from the deck itself rather than written down here.
+ *
+ * The tour drives the real result deck, so "the tour reaches every screen" is a
+ * claim about a number that lives in App.jsx. Written as a literal it went
+ * stale the moment a fourth screen was added — the guard did not catch the gap,
+ * it just failed and had to be edited to agree with the change.
+ */
+const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+const SCREENS = [...appSource
+  .slice(appSource.indexOf("const RESULT_SCREENS = ["), appSource.indexOf("];", appSource.indexOf("const RESULT_SCREENS = [")))
+  .matchAll(/^\s*\{ id: "/gm)]
+  .map((match, index) => index);
+
+test("counts the result screens off the deck the tour actually drives", () => {
+  assert.ok(SCREENS.length >= 3, `RESULT_SCREENS 를 읽지 못했습니다 (${SCREENS.length}개)`);
+});
+
 test("every step can be played and lit", () => {
   const ids = new Set();
 
@@ -204,7 +223,7 @@ test("every step can be played and lit", () => {
     }
 
     if (step.scene === "composer") assert.ok(GUIDE_EXAMPLES[step.example], `${step.id} names no example`);
-    if (step.results === "deck") assert.ok([0, 1, 2].includes(step.deck), `${step.id} opens no result screen`);
+    if (step.results === "deck") assert.ok(SCREENS.includes(step.deck), `${step.id} opens no result screen`);
   }
 
   // The tour opens on the whole screen before it starts pointing at parts of it.
@@ -212,7 +231,8 @@ test("every step can be played and lit", () => {
   // And it walks the result deck forwards, never back.
   const decks = GUIDE_STEPS.filter((step) => step.results === "deck").map((step) => step.deck);
   assert.deepEqual(decks, [...decks].sort((a, b) => a - b));
-  assert.deepEqual([...new Set(decks)], [0, 1, 2], "the tour must reach all three result screens");
+  assert.deepEqual([...new Set(decks)], SCREENS,
+    `the tour must reach all ${SCREENS.length} result screens`);
 });
 
 test("the tour does not promise a legal outcome", () => {

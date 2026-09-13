@@ -23,6 +23,22 @@ export const WEB_EXPRESSIONS = ["sexual_text", "insult_with_sexual_terms", "sexu
 // the batch is fetched once and narrowed per reader. The fetch schema and the
 // validator have to agree on it, so it lives here and analysis-client imports it.
 export const WEB_BATCH_SIZE = 12;
+
+/**
+ * How many posts the gallery contributes to one batch.
+ *
+ * Separate from WEB_BATCH_SIZE, which was doing three jobs at once: how many
+ * posts to ask the web search for, where to cut the gallery's, and how large a
+ * stored batch may be. Growing the pool meant growing the paid web search along
+ * with it, which was the opposite of the point.
+ *
+ * 30 because the vector needs something to tell apart. Ranking measured over a
+ * 21-post batch put every similarity between 46 and 63 — 20 of those 21 were
+ * game chat, and cosine distance has nothing to say when every post describes
+ * the same situation. Collecting is free; only the summary scales, linearly, at
+ * roughly one analysis call per key.
+ */
+export const GALLERY_BATCH_SIZE = 30;
 const MAX_BODY = 400_000;
 
 /**
@@ -43,6 +59,39 @@ const PRECEDENT_LOOKALIKE = [
 // describing their own case may need to say them. Someone else's post is a
 // different matter — we are copying it onto our page.
 const AFFILIATION = /[가-힣]{2,10}(대학교|대학|고등학교|중학교|초등학교|주식회사|㈜)|주식회사\s*[가-힣A-Za-z]{2,10}/;
+
+/**
+ * Words a summary of somebody else's post must not carry onto this page.
+ *
+ * The posts this now reads are written by people quoting, in full, what was
+ * said to them. The summary is the model's own sentence rather than a copy, so
+ * this is a backstop rather than the first line of defence — but the reader on
+ * the other side of it may be the person those words were sent to, and showing
+ * them back is a different act from summarising a consultation question.
+ *
+ * Narrower than `SEXUAL_SLUR_TERMS` in fact-tags.js on purpose. That list is
+ * built to recognise a complaint, so it holds 성희롱, 성드립 and 패드립 — words a
+ * neutral summary legitimately needs. Rejecting on those would throw away good
+ * posts to catch nothing.
+ */
+/**
+ * Two of these are also ordinary verbs.
+ *
+ * `보지` is the stem of 보다 before a negative — 미리 보지 못해, 보지 않고 — and
+ * `자지` the same for 자다. Matched bare, they reject perfectly clean summaries:
+ * a neutral account of somebody who could not read the complaint beforehand was
+ * thrown out for containing a slur it does not contain. Both were rejecting
+ * good posts from the model's output too, silently, since the day this was
+ * written — a dropped item is only ever a count.
+ *
+ * The negative auxiliaries are the whole collision. As a noun the word is not
+ * followed by 못/않/말/마, so refusing to match there costs nothing.
+ */
+const VERB_NOT_SLUR = "(?!\\s*(?:못|않|말|마))";
+const EXPLICIT_IN_QUOTE = new RegExp(
+  `보지${VERB_NOT_SLUR}|자지${VERB_NOT_SLUR}|`
+  + "좆|꼬추|씹새|씹년|씹할|젖가슴|젖탱|따먹|걸레년|걸레같|창녀|창년|딸딸이|폰섹|니애미|니애비|느금마|느개비|애미|섹스",
+);
 
 function isPublicHttpUrl(value) {
   let url;
@@ -107,6 +156,7 @@ export function validateWebCases(items, { limit = WEB_BATCH_SIZE } = {}) {
     if (!title || !quote || !sourceType || !url) { dropped.push("shape"); continue; }
     if (redactSensitiveText(quote).redactionCount > 0 || AFFILIATION.test(quote)) { dropped.push("identity"); continue; }
     if (PRECEDENT_LOOKALIKE.some((pattern) => pattern.test(quote) || pattern.test(title))) { dropped.push("precedentLookalike"); continue; }
+    if (EXPLICIT_IN_QUOTE.test(quote)) { dropped.push("explicit"); continue; }
 
     const key = `${url.host}${url.pathname}${url.search}`;
     if (seen.has(key)) { dropped.push("duplicate"); continue; }
@@ -122,6 +172,14 @@ export function validateWebCases(items, { limit = WEB_BATCH_SIZE } = {}) {
       medium: typeof item.medium === "string" ? item.medium : "unknown",
       expression: typeof item.expression === "string" ? item.expression : "other",
       writerRole: WEB_WRITER_ROLES.includes(item.writerRole) ? item.writerRole : "unclear",
+      // Whether the post says how it turned out. This describes the post, not
+      // the reader's case, and nothing is allowed to add these up into a rate:
+      // a handful of self-selected posts is not evidence about anybody's odds,
+      // and a screen reading "불송치 60%" would be predicting an outcome.
+      ending: item.ending === true,
+      // Set only for the baiting-for-a-settlement pattern the galleries call a
+      // 통매음 헌터. Used for ordering and never shown or stated.
+      situation: item.situation === "hunter_pattern" ? "hunter_pattern" : null,
     });
     if (cases.length >= limit) break;
   }
@@ -223,33 +281,122 @@ const EXPRESSION_WORDS = {
  * full fact comparison the precedent cards already use, rather than on a
  * model's reading of a sentence.
  */
-export function selectWebCases({ cases, facts = {}, role = null, limit = WEB_CASE_DISPLAY_LIMIT } = {}) {
-  const readerMedium = facts.medium && facts.medium !== "unknown" ? facts.medium : null;
+/**
+ * Which site a post came from, for the purpose of not showing three of them.
+ *
+ * The host is the honest unit here. Two Lawtalk questions are two Lawtalk
+ * questions whether the panel calls them lawyer_qna or qna.
+ */
+export function webCaseSource(item) {
+  try {
+    return new URL(item.url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
 
-  const scored = (cases || []).map((item, index) => {
-    const { factScore, comparableCount } = compareFactTags(facts, {
-      medium: item.medium || "unknown",
-      expressionType: item.expression || "other",
-    });
-    // The row is already shared by both sides, so this is the only thing that
-    // tells them apart: a post plainly written from the other side goes last.
-    const known = item.writerRole && item.writerRole !== "unclear" && role;
-    const roleScore = known ? (item.writerRole === role ? 40 : -40) : 0;
-    return { item, index, score: (comparableCount === 0 ? 0 : factScore) + roleScore };
+// At most two of the three slots from any one site. The panel was 87% Lawtalk,
+// and the reason that matters is not variety for its own sake: a consultation
+// post stops at the question, so a reader who got three of them learned what
+// other people asked and nothing about how any of it went.
+const MAX_PER_SOURCE = 2;
+
+/**
+ * How much of the base score each half is worth.
+ *
+ * Carried over from the precedent search, which splits its own base evenly
+ * between the vector and the tags (`search-precedents.mjs:157-188`, 0.45/0.45
+ * with the last 0.1 going to issue tags this side does not store). It is not a
+ * number measured on web cases yet, which is why it is a constant with a name
+ * rather than two literals in an expression.
+ *
+ * The tags are worth keeping in the mix even at a third of a fill rate: when
+ * they do fire on a gallery post they are exact, where the vector is only ever
+ * close.
+ */
+export const SEMANTIC_WEIGHT = 0.5;
+
+/**
+ * Whether the baiting posts should sort up for this reader.
+ *
+ * Not a finding about them, and never said to them. Somebody reported for
+ * something said to a stranger online is who those posts are about.
+ */
+export function readerFacesStranger({ facts = {}, role = null } = {}) {
+  return role === "reported"
+    && (facts.relationship === "stranger" || facts.relationship === "online_user");
+}
+
+/**
+ * How one stored post scores against one reader.
+ *
+ * Split out of `selectWebCases` because the pool ranks the whole collection
+ * with the same rules — two rankings that could drift apart is how a post ends
+ * up ordered one way in a batch and another way in the pool for the same
+ * reader. `base` is returned alongside the total because it is the part that
+ * means *this is the same kind of situation*; the bonuses only order what is
+ * already relevant, so a relevance floor has to be applied to `base` alone.
+ */
+export function scoreWebCase({ item, facts = {}, role = null, semantic = null, strangerOnline = false } = {}) {
+  const { factScore, comparableCount } = compareFactTags(facts, {
+    medium: item.medium || "unknown",
+    expressionType: item.expression || "other",
   });
+  // A post is shared by both sides, so this is the only thing that tells them
+  // apart: one plainly written from the other side goes last.
+  const known = item.writerRole && item.writerRole !== "unclear" && role;
+  const roleScore = known ? (item.writerRole === role ? 40 : -40) : 0;
+  const endingScore = item.ending ? 15 : 0;
+  const situationScore = item.situation === "hunter_pattern" && strangerOnline ? 25 : 0;
+
+  // A post nobody has embedded yet is unknown, not dissimilar, so the tags
+  // carry the whole base rather than the post being scored as distant. That
+  // keeps the panel working unchanged offline, without consent, and on the
+  // day a new post is collected but not yet embedded.
+  const tagScore = comparableCount === 0 ? 0 : factScore;
+  const base = typeof semantic === "number"
+    ? semantic * SEMANTIC_WEIGHT + tagScore * (1 - SEMANTIC_WEIGHT)
+    : tagScore;
+
+  return { base, score: base + roleScore + endingScore + situationScore };
+}
+
+export function selectWebCases({
+  cases, facts = {}, role = null, limit = WEB_CASE_DISPLAY_LIMIT, similarity = null,
+} = {}) {
+  const readerMedium = facts.medium && facts.medium !== "unknown" ? facts.medium : null;
+  const strangerOnline = readerFacesStranger({ facts, role });
+
+  const scored = (cases || []).map((item, index) => ({
+    item,
+    index,
+    ...scoreWebCase({ item, facts, role, semantic: similarity?.get(item.url), strangerOnline }),
+  }));
 
   scored.sort((left, right) => right.score - left.score || left.index - right.index);
-  return scored
+
+  const taken = new Map();
+  const picked = [];
+  for (const { item } of scored) {
+    if (picked.length >= Math.max(limit, 0)) break;
     // A post about a different medium is not the same situation, whatever else
     // it shares. Padding the list to three with game chat posts for a bank
     // transfer memo case is the web-section version of inventing a precedent,
     // and this service does not do that. Fewer is the honest answer.
-    .filter(({ item }) => !readerMedium
-      || !item.medium
-      || item.medium === "unknown"
-      || item.medium === readerMedium)
-    .slice(0, Math.max(limit, 0))
-    .map(({ item }) => item);
+    if (readerMedium && item.medium && item.medium !== "unknown" && item.medium !== readerMedium) continue;
+
+    // Only sites are rationed. Two posts whose address we could not read are
+    // not "the same site as each other", and treating them as one bucket
+    // silently capped a list that had nothing to do with source at all.
+    const source = webCaseSource(item);
+    if (source) {
+      const used = taken.get(source) || 0;
+      if (used >= MAX_PER_SOURCE) continue;
+      taken.set(source, used + 1);
+    }
+    picked.push(item);
+  }
+  return picked;
 }
 
 export function buildWebSearchQuery(facts = {}) {
@@ -257,10 +404,66 @@ export function buildWebSearchQuery(facts = {}) {
   return [...parts, "통매음", "통신매체이용음란"].join(" ");
 }
 
-// How long a stored batch is considered current. Past this a reader still gets
-// it immediately and a refresh runs behind the response, so nobody waits on a
-// web search and a query is never fetched more than once a day.
-export const WEB_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * The same situation, asked the way a gallery's own search will answer it.
+ *
+ * The query above is written for a model with a web search tool: long, and
+ * carrying every tag, because something on the other end reads it. A site
+ * search matches words. Handing it the full key returned 2 usable posts out of
+ * 24 on one medium and none at all on another, while "통매음 후기" returned six
+ * out of eight — measured, on the real search, before this existed.
+ *
+ * Three queries, and they are not interchangeable. 후기 finds people who wrote
+ * up what happened and 불송치 finds the disposition that gallery talks about
+ * most — but both are the accused person's vocabulary, and a first run proved
+ * it: all nine posts collected came back labelled `reported`, so a reader who
+ * was on the receiving end saw nothing from here at all.
+ *
+ * The third asks in the complainant's words instead. It carries no medium,
+ * because there are far fewer of those posts and narrowing further returned
+ * nothing — measured on the live search, along with the decision to leave out
+ * 통매음 신고 후기, which was half jokes.
+ */
+export function buildGalleryQueries(queryKey) {
+  const key = String(queryKey || "");
+  const medium = Object.values(MEDIUM_WORDS).find((word) => key.includes(word));
+  const base = medium ? `${medium} 통매음` : "통매음";
+  return [`${base} 후기`, `${base} 불송치`, "통매음 고소 후기"];
+}
+
+// How many posts each of those queries may contribute. Without this the batch
+// fills in query order and `summarizeWebPosts` keeps the first WEB_BATCH_SIZE,
+// which means the two accused-side queries fill it and the complainant-side one
+// is cut off — exactly the state this is meant to fix.
+//
+// A side that comes back empty is not topped up from the other. Doing that is
+// how the batch became one-sided in the first place.
+export const GALLERY_QUERY_LIMITS = [10, 10, 10];
+
+export const DEFAULT_WEB_CACHE_TTL_HOURS = 24;
+
+/**
+ * How long a stored batch is considered current.
+ *
+ * Past this a reader still gets it immediately and a refresh runs behind the
+ * response, so nobody waits on a web search — but the refresh is the single
+ * most expensive thing this feature does: two model calls, one of them with the
+ * `web_search` tool, which is billed per call. At 24 hours that is once a day
+ * per key, and there are 28 keys.
+ *
+ * Configurable because it was a code constant, and the one lever that actually
+ * governs the bill needed a redeploy to move. Someone browsing their own
+ * service to see how it looks should not be buying a refresh every day they do
+ * it; set this long while testing and warm deliberately with the script.
+ */
+export function webCacheTtlMs(env = process.env) {
+  const hours = Number(env.WEB_CACHE_TTL_HOURS);
+  return (Number.isFinite(hours) && hours > 0 ? hours : DEFAULT_WEB_CACHE_TTL_HOURS) * 60 * 60 * 1000;
+}
+
+// Kept as an export because tests and callers read it. Resolved once at load,
+// which is what the constant did before.
+export const WEB_CACHE_TTL_MS = webCacheTtlMs();
 
 const CACHE_UPSERT_SQL = `INSERT INTO web_case_cache (query_key, cases, model, fetched_at)
  VALUES ($1, $2::jsonb, $3, now())
@@ -269,7 +472,7 @@ const CACHE_UPSERT_SQL = `INSERT INTO web_case_cache (query_key, cases, model, f
    model = EXCLUDED.model,
    fetched_at = now()`;
 
-export async function readCachedWebCases({ pool, queryKey }) {
+export async function readCachedWebCases({ pool, queryKey, ttlMs = WEB_CACHE_TTL_MS }) {
   const { rows } = await pool.query(
     "SELECT cases, model, fetched_at AS \"fetchedAt\" FROM web_case_cache WHERE query_key = $1",
     [String(queryKey)],
@@ -280,15 +483,29 @@ export async function readCachedWebCases({ pool, queryKey }) {
     cases: Array.isArray(rows[0].cases) ? rows[0].cases : [],
     model: rows[0].model,
     fetchedAt,
-    stale: Date.now() - fetchedAt.getTime() > WEB_CACHE_TTL_MS,
+    stale: Date.now() - fetchedAt.getTime() > ttlMs,
   };
 }
+
+// Moves the clock without touching what is stored. Used when a refresh came
+// back with nothing: the old batch stays, but the attempt counts.
+const CACHE_TOUCH_SQL = `INSERT INTO web_case_cache (query_key, cases, model, fetched_at)
+ VALUES ($1, '[]'::jsonb, $2, now())
+ ON CONFLICT (query_key) DO UPDATE SET fetched_at = now()`;
 
 export async function writeCachedWebCases({ pool, queryKey, cases, model }) {
   // A search that came back with nothing is not a result worth keeping: writing
   // it would replace a good batch with an empty one and then look fresh for a
   // day. Leaving the old row alone means a reader keeps seeing what worked.
-  if (!Array.isArray(cases) || cases.length === 0) return false;
+  //
+  // But leaving the timestamp alone too was a hole. The row stayed stale, so
+  // the next reader started another refresh, and the one after that — a key
+  // that keeps coming back empty bought a web search on every single request.
+  // The batch is still not overwritten; only the clock moves.
+  if (!Array.isArray(cases) || cases.length === 0) {
+    await pool.query(CACHE_TOUCH_SQL, [String(queryKey), String(model || "")]);
+    return false;
+  }
   await pool.query(CACHE_UPSERT_SQL, [String(queryKey), JSON.stringify(cases), String(model || "")]);
   return true;
 }
